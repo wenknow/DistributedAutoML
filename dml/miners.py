@@ -105,27 +105,6 @@ class BaseMiner(ABC, PushMixin):
         self.emigrate_genes(best_gene)
         return self.immigrate_genes()
     
-    def push_to_huggingface(self, file_path, commit_message):
-        if not self.config.gene_repo:
-            logging.info("No repository name provided. Skipping push to Hugging Face.")
-            return
-
-        api = HfApi(token=self.config.hf_token)
-        repo_url = f"https://huggingface.co/{self.config.gene_repo}"
-        
-        if not os.path.exists(self.config.gene_repo):
-            Repository(self.config.gene_repo, clone_from=repo_url)
-        
-        repo = Repository(self.config.gene_repo, repo_url)
-        repo.git_pull()
-        
-        api.upload_file(
-            path_or_fileobj=file_path,
-            path_in_repo=file_path,
-            repo_id=self.config.gene_repo,
-            commit_message=commit_message
-        )
-
     def create_baseline_model(self):
         return BaselineNN(input_size=28*28, hidden_size=128, output_size=10).to(self.device)
 

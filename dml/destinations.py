@@ -6,6 +6,7 @@ import time
 import tempfile
 from abc import ABC, abstractmethod
 
+from dml.configs.config import config
 from dml.gene_io import save_individual_to_json
 
 class PushDestination(ABC):
@@ -40,12 +41,13 @@ class HuggingFacePushDestination(PushDestination):
 
         try:
             if not os.path.exists(self.repo_name):
-                Repository(self.repo_name, clone_from=f"https://huggingface.co/{self.repo_name}")
+                Repository(self.repo_name, token=config.hf_token ,clone_from=f"https://huggingface.co/{self.repo_name}")
             
-            repo = Repository(self.repo_name, f"https://huggingface.co/{self.repo_name}")
+
+            repo = Repository(self.repo_name, f"https://huggingface.co/{self.repo_name}",token=config.hf_token)
             repo.git_pull()
             
-            api = HfApi()
+            api = HfApi(token=config.hf_token)
             api.upload_file(
                 path_or_fileobj=temp_file_path,
                 path_in_repo=f"best_gene.json",
