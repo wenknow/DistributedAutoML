@@ -1,7 +1,7 @@
 
-from chain.btt_connector import BittensorNetwork
-from chain.chain_manager import ChainMultiAddressStore
-from configs.config import config
+from dml.chain.btt_connector import BittensorNetwork
+from dml.chain.chain_manager import ChainMultiAddressStore
+from dml.configs.config import config
 
 def main(config):
     bt_config = config.get_bittensor_config()

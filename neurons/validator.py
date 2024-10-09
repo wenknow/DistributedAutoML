@@ -2,10 +2,10 @@ import argparse
 import logging
 
 from dml.validators import ValidatorFactory
-from chain.btt_connector import BittensorNetwork
-from chain.chain_manager import ChainMultiAddressStore
-from chain.hf_manager import HFManager
-from configs.config import config
+from dml.chain.btt_connector import BittensorNetwork
+from dml.chain.chain_manager import ChainMultiAddressStore
+from dml.chain.hf_manager import HFManager
+from dml.configs.config import config
 
 
 def setup_logging(log_file='validator.log'):

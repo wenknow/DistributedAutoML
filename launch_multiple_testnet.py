@@ -2,7 +2,7 @@ import argparse
 import bittensor as bt
 import json
 import subprocess
-from configs.config import config
+from dml.configs.config import config
 from miner import main as miner_main
 from validator import main as validator_main
 import multiprocessing

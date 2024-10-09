@@ -1,7 +1,7 @@
-from configs.general_config import GeneralConfig
-from configs.bittensor_config import BittensorConfig
-from configs.miner_config import MinerConfig
-from configs.validator_config import ValidatorConfig
+from dml.configs.general_config import GeneralConfig
+from dml.configs.bittensor_config import BittensorConfig
+from dml.configs.miner_config import MinerConfig
+from dml.configs.validator_config import ValidatorConfig
 
 class Config:
     def __init__(self):
