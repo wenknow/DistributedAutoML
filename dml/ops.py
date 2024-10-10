@@ -144,6 +144,8 @@ def create_pset_validator():
    
     # Constants
     device = torch.device("cpu")
+    pset.addEphemeralConstant("rand_const", lambda: torch.tensor(random.uniform(-1, 1), device=device))
+
     for i in range(1, 9):
         pset.addEphemeralConstant(f"rand_const_{i}", lambda: torch.tensor(random.uniform(-1, 1), device=device))
     
