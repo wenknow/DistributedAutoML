@@ -2,6 +2,36 @@
 
 Hivetrain's Incentivized AutoML Loss Subnet, a collaborative platform dedicated to revolutionizing deep learning by automating the discovery of improved and novel neural network components such loss functions, activation functions and potentially new algorithms that surpass the current state-of-the art. Inspired by the AutoML Zero paper, we leverage genetic programming to progressively develop increasingly complex mathematical functions using evolutionary and gradient based optimization.
 
+## Vision and Direction
+
+Hivetrain's AutoML Subnet represents more than just an improvement in machine learning techniques; it embodies a paradigm shift in AI research and development. Our vision extends far beyond traditional AutoML, aiming to lay the groundwork for truly self-improving AI systems.
+
+### Expanding the AI Search Space
+
+We're not just optimizing existing AI components; we're expanding the search space of AI itself. By applying evolutionary algorithms to the very building blocks of AI - loss functions, activation functions, and potentially entire algorithms - we're enabling AI to participate in its own evolution.
+
+### From Human-Centered to Machine-Centered AI Research
+
+Traditionally, AI advancements have been driven by human researchers. Our approach flips this model, allowing AI systems to explore and optimize their own architectures and components. This shift towards machine-centered AI research opens up possibilities far beyond what human intuition alone can achieve.
+
+### Stepping Stones to Artificial Superintelligence (ASI)
+
+While we're starting with specific components like loss functions, our long-term vision is to create a framework for AI that can continuously improve its own fundamental algorithms. This self-improving characteristic is a crucial step on the path to Artificial Superintelligence.
+
+### A New Frontier in AI Research
+
+By distributing this search across a network of miners and validators, we're not just crowdsourcing compute power; we're crowdsourcing the future of AI. Each discovery, each optimization, brings us closer to AI systems that can innovate beyond their initial design.
+
+### Beyond Current State-of-the-Art
+
+Our goal isn't just to match human-designed AI components but to surpass them. We believe that machine-evolved algorithms have the potential to uncover optimizations and approaches that human researchers might never consider.
+
+### Towards a Self-Improving AI Ecosystem
+
+Ultimately, we envision creating an ecosystem where AI improvement becomes a continuous, autonomous process. This project is a first step towards a future where AI systems can adapt, evolve, and improve themselves without direct human intervention.
+
+By participating in this subnet, you're not just mining for rewards or validating transactions; you're contributing to a fundamental shift in how we approach AI development. Together, we're pushing the boundaries of what's possible in artificial intelligence and taking concrete steps towards the realization of self-improving AI systems.
+
 ## Current Focus
 
 Currently running on Bittensor netuid 47 (100 testnet), we're starting with a loss function search where miners are incentivesed to find better loss functions for a neural networks.
@@ -9,6 +39,12 @@ Currently running on Bittensor netuid 47 (100 testnet), we're starting with a lo
 ## Roadmap
 
 Future steps include scaling up the complexity and generality of evaluations as well as expanding the search space to more AI algorithm components (losses, activations, layer types). Due to the research aligned nature of this subnet, new experiments and code updates are expected frequently and will be announced earlier on the Hivetrain discord server as well as the bittensor subnet discord channel.
+
+1. Loss functions, Activations (We are here)
+2. Optimizers
+3. Layer Components
+4. Meta-learning
+5. Evolving Evolutionary Algorithms/Self-improving algorithms
 
 ### Why This Is Needed
 Deep learning models have achieved remarkable success across various domains, from computer vision and natural language processing to reinforcement learning and beyond. However, these models often rely on hand designed features. AI has proven superhuman performance in many domains, including chess, go, medical diagnostics and music generation. We think that AI research should be added to this list. By training AI to design traditionally hand designed features and components of AI algorithms we move towards self-improving AI and superintelligence. 
