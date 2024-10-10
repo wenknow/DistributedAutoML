@@ -28,10 +28,10 @@ def run_git_command(command: list[str]) -> Optional[str]:
         return None
 
 def get_local_version() -> Optional[str]:
-    """Read the local version from chain/__init__.py."""
+    """Read the local version from dml/chain/__init__.py."""
     try:
         sys.path.insert(0, REPO_PATH)
-        import chain
+        import dml.chain as chain
         importlib.reload(chain)  # Ensure we're getting the latest version
         return getattr(chain, '__spec_version__', None)
     except ImportError:
@@ -46,7 +46,7 @@ def get_remote_version() -> Optional[str]:
         return None
     
     try:
-        remote = f"origin/{BRANCH}:chain/__init__.py"
+        remote = f"origin/{BRANCH}:dml/chain/__init__.py"
         print(remote)
         remote_content = run_git_command(['show', remote])
         if remote_content is None:
@@ -57,7 +57,7 @@ def get_remote_version() -> Optional[str]:
             if line.startswith('__spec_version__'):
                 return line.split('=')[1].strip().strip("'\"")
         
-        logging.error("__spec_version__ not found in remote chain/__init__.py")
+        logging.error("__spec_version__ not found in remote dml/chain/__init__.py")
         return None
     except Exception as e:
         logging.error(f"Error fetching remote version: {e}")
