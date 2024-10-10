@@ -11,6 +11,11 @@ If you don't have a key on the bittensor network refer to [this](https://docs.bi
 ### 1. Install the library
 
 ```
+git clone https://github.com/Hivetrain/DistributedAutoML
+cd DistributedAutoML
+sudo apt install git-lfs
+git lfs install
+pip install -r requirements.txt
 pip install -e .
 ```
 
