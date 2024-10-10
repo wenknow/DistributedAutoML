@@ -17,7 +17,7 @@ from deap import algorithms, base, creator, tools, gp
 
 from dml.models import BaselineNN, EvolvableNN, EvolvedLoss
 from dml.gene_io import load_individual_from_json
-from dml.ops import create_pset
+from dml.ops import create_pset_validator
 from dml.record import GeneRecordManager
 from dml.utils import set_seed
 
@@ -45,7 +45,7 @@ class BaseValidator(ABC):
 
     def initialize_deap(self):
         self.toolbox = base.Toolbox()
-        self.pset = create_pset()
+        self.pset = create_pset_validator()
 
         creator.create("FitnessMax", base.Fitness, weights=(1.0,))
         creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessMax)
