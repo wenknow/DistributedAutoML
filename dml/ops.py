@@ -2,6 +2,7 @@ import random
 import torch
 from deap import gp
 import torch 
+import operator
 from dml.configs.config import config
 device = torch.device(config.device)
 
@@ -56,6 +57,8 @@ def safe_exp(x):
     return torch.exp(torch.clamp(x, -100, 100))
 
 def create_pset():
+    gp.staticLimit(operator.attrgetter('height'), 15)
+    
     pset = gp.PrimitiveSet("MAIN", 2)
     
     # Basic arithmetic operations
