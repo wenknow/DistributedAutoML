@@ -57,8 +57,8 @@ def safe_exp(x):
     return torch.exp(torch.clamp(x, -100, 100))
 
 def create_pset():
-    gp.staticLimit(operator.attrgetter('height'), 15)
-    
+    gp.staticLimit(operator.attrgetter('height'), config.Miner.gp_tree_height)
+
     pset = gp.PrimitiveSet("MAIN", 2)
     
     # Basic arithmetic operations

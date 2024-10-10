@@ -21,4 +21,5 @@ class MinerConfig:
     push_platform = "hf"
     mutation_log_interval=99
     check_registration_interval = 500
+    gp_tree_height = 15
     seed = 42
