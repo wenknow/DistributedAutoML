@@ -34,7 +34,11 @@ By participating in this subnet, you're not just mining for rewards or validatin
 
 ## Current Focus
 
-Currently running on Bittensor netuid 47 (100 testnet), we're starting with a loss function search where miners are incentivesed to find better loss functions for a neural networks.
+Currently running on Bittensor netuid (coming soon) (100 testnet), we're starting with a loss function search where miners are incentivesed to find better loss functions for a neural networks.
+
+The search for effective loss functions is a critical aspect of advancing deep learning. Loss functions play a pivotal role in guiding the training process of complex models, such as neural networks, by quantifying the difference between predicted outputs and actual targets. An optimal loss function can significantly enhance a model's ability to learn from large and intricate datasets, improve convergence rates, and ultimately lead to better generalization on unseen data. As deep learning applications grow increasingly sophisticated, the need for customized loss functions tailored to specific tasks—such as image classification, natural language processing, or generative modeling—becomes more pronounced.
+
+In recent years, traditional loss functions have faced challenges in addressing unique deep learning complexities, such as handling class imbalance, noise, and varying data distributions. This is where loss function search becomes essential; it enables researchers and practitioners to automate the discovery of innovative loss functions that can outperform standard ones in deep learning contexts. By leveraging advanced techniques such as genetic algorithms and automated machine learning (AutoML), the search for new loss functions not only accelerates the model development process but also pushes the boundaries of what is achievable in deep learning. Refining loss functions can lead to more robust and accurate models, fostering advancements across various industries, from healthcare to autonomous systems, where the performance and reliability of deep learning models are paramount.
 
 ## Roadmap
 
