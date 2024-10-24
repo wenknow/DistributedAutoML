@@ -69,21 +69,30 @@ You have two main approaches as a miner:
      - Run an independent miner.
    - If you don't:
      - Joing a mining pool (work in progress)
+       
+#### Requirements
+    4-8 core CPU
+    16 GB RAM
+    200 GB storage
+    No GPU required at this stage
 
 ### As a Validator
 
 We welcome validators and are committed to supporting you. We can assist with setup, automation, cost-reduction, and other measures to reduce friction. Please note: Do not copy weights.
 
-## FAQs
+#### Requirements
+    4-8 core CPU
+    16 GB RAM
+    200 GB storage
+    No GPU required at this stage
 
+## FAQs
 **Q: Is there research backing your claims?**  
 A: Yes, our work is inspired by and based on several research papers:
 - [AutoML-Zero: Evolving Machine Learning Algorithms From Scratch](https://arxiv.org/abs/2003.03384)
 - [Lion: Adversarial Distillation of Closed-Source Large Language Model](https://arxiv.org/abs/2302.06675)
 - For more AutoML research areas, refer to the [AutoML Conference 2024](https://2024.automl.cc/)
 
-**Q: Are you done with distributed training?**  
-A: We're still developing our distributed training solution, experiments are running. 
 
 ## Getting Started
 
