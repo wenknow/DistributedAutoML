@@ -7,6 +7,7 @@ Hivetrain's Incentivized AutoML Loss Subnet, a collaborative platform dedicated 
 Hivetrain's AutoML Subnet represents more than just an improvement in machine learning techniques; it embodies a paradigm shift in AI research and development. Our vision extends far beyond traditional AutoML, aiming to lay the groundwork for truly self-improving AI systems.
 
 We're not just optimizing existing AI components; we're expanding the search space of AI itself. By applying evolutionary algorithms to the very building blocks of AI - loss functions, activation functions, and potentially entire algorithms - we're enabling AI to participate in its own evolution.
+
 Traditionally, AI advancements have been driven by human researchers. Our approach flips this model, allowing AI systems to explore and optimize their own architectures and components. This shift towards machine-centered AI research opens up possibilities far beyond what human intuition alone can achieve.
 
 ### Stepping Stones to Artificial Superintelligence (ASI)
