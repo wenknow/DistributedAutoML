@@ -46,9 +46,10 @@ Future steps include scaling up the complexity and generality of evaluations as 
 
 1. Loss functions, Activations (We are here)
 2. Optimizers
-3. Layer Components
-4. Meta-learning
-5. Evolving Evolutionary Algorithms/Self-improving algorithms
+3. Quantization functions
+4. Layer Components
+5. Meta-learning
+6. Evolving Evolutionary Algorithms/Self-improving algorithms
 
 ### Why This Is Needed
 Deep learning models have achieved remarkable success across various domains, from computer vision and natural language processing to reinforcement learning and beyond. However, these models often rely on hand designed features. AI has proven superhuman performance in many domains, including chess, go, medical diagnostics and music generation. We think that AI research should be added to this list. By training AI to design traditionally hand designed features and components of AI algorithms we move towards self-improving AI and superintelligence. 
