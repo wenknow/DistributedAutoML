@@ -18,8 +18,6 @@ While we're starting with specific components like loss functions, our long-term
 
 By distributing this search across a network of miners and validators, we're not just crowdsourcing compute power; we're crowdsourcing the future of AI. Each discovery, each optimization, brings us closer to AI systems that can innovate beyond their initial design.
 
-### Beyond Current State-of-the-Art
-
 Our goal isn't just to match human-designed AI components but to surpass them. We believe that machine-evolved algorithms have the potential to uncover optimizations and approaches that human researchers might never consider.
 
 ### Towards a Self-Improving AI Ecosystem
