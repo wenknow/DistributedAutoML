@@ -166,11 +166,7 @@ class BaseMiner(ABC, PushMixin):
             ind.fitness.values = fitness_values
             population.append(ind)
 
-        # population_depths = []
-        # for member in population:
-        #     depth = calculate_tree_depth(str(member))
-        #     population_depths.append(depth)
-        # breakpoint()
+       
         
         hof_data = checkpoint['hof']
         hof = tools.HallOfFame(maxsize=len(hof_data))
@@ -189,8 +185,6 @@ class BaseMiner(ABC, PushMixin):
         else:
             best_individual_all_time = None
 
-        #print(calculate_tree_depth(str(best_individual_all_time)))
-        #breakpoint()
         
         # Restore random states
         random_state = checkpoint['random_state']
@@ -282,7 +276,6 @@ class BaseMiner(ABC, PushMixin):
                 except:
                     pass
             
-            print(f"max height pre: {max(height)}")
 
             # Select the next generation individuals
             offspring = self.toolbox.select(population, len(population))
@@ -339,7 +332,6 @@ class BaseMiner(ABC, PushMixin):
             hof.update(population)
 
             height = [ind.height for ind in population if ind.height]
-            print(f"max height post: {max(height)}")
             
         
             # Gather all the fitnesses in one list and print the stats
@@ -691,7 +683,7 @@ class ActivationMiner(BaseMiner):
         for idx, (inputs, targets) in enumerate(train_loader):
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
-            if idx == 1:
+            if idx == self.config.Miner.training_iterations:
                 break
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -708,7 +700,7 @@ class ActivationMiner(BaseMiner):
             for idx, (inputs, targets) in enumerate(val_loader):
                 inputs = inputs.to(self.device)
                 targets = targets.to(self.device)
-                if idx > 10:
+                if idx >= self.config.Miner.evaluation_iterations:
                     return correct/total
                 outputs = model(inputs)
                 _, predicted = outputs.max(1)
