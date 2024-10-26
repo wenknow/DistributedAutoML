@@ -25,11 +25,6 @@ def safe_mul(x, y):
     y = torch.tensor(y, device=device) if not torch.is_tensor(y) else y
     return x * y
 
-def safe_div(x, y):
-    x = torch.tensor(x, device=device) if not torch.is_tensor(x) else x
-    y = torch.tensor(y, device=device) if not torch.is_tensor(y) else y
-    epsilon = 1e-8
-    return x / (y + epsilon)
 
 def safe_sigmoid(x):
     x = torch.tensor(x, device=device) if not torch.is_tensor(x) else x
@@ -43,10 +38,6 @@ def safe_tanh(x):
     x = torch.tensor(x, device=device) if not torch.is_tensor(x) else x
     return torch.tanh(x)
 
-
-def safe_div(x, y):
-    return x / (y + 1e-8)
-
 def safe_log(x):
     return torch.log(torch.abs(x) + 1e-8)
 
@@ -56,8 +47,10 @@ def safe_sqrt(x):
 def safe_exp(x):
     return torch.exp(torch.clamp(x, -100, 100))
 
+def generate_random():
+    return torch.tensor(random.uniform(-1, 1), device=device)
+
 def create_pset():
-    gp.staticLimit(operator.attrgetter('height'), config.Miner.gp_tree_height)
 
     pset = gp.PrimitiveSet("MAIN", 2)
     
@@ -87,8 +80,8 @@ def create_pset():
     pset.addPrimitive(torch.std, 1)
     
     # Constants
-    device = torch.device("cpu")
-    pset.addEphemeralConstant("rand_const", lambda: torch.tensor(random.uniform(-1, 1), device=device))
+    
+    pset.addEphemeralConstant("rand_const", generate_random)
     pset.addTerminal(torch.tensor(1.0, device=device), name="one")
     pset.addTerminal(torch.tensor(0.0, device=device), name="zero")
     pset.addTerminal(torch.tensor(0.5, device=device), name="half")

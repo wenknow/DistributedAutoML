@@ -31,3 +31,31 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
     np.random.seed(seed)
     random.seed(seed)
+
+import re
+
+def calculate_tree_depth(expression: str) -> int:
+    """Calculates the maximum depth of nested function calls in an expression.
+
+    Args:
+        expression: The expression string to analyze.
+
+    Returns:
+        The maximum depth of nested function calls.
+    """
+    # Tokenize the expression to detect function calls.
+    tokens = re.findall(r'\w+\(|\)|\w+', expression)
+    max_depth = 0
+    current_depth = 0
+
+    for token in tokens:
+        if token.endswith('('):  # A function call starts
+            current_depth += 1
+            max_depth = max(max_depth, current_depth)
+        elif token == ')':  # A function call ends
+            current_depth -= 1
+
+    if current_depth != 0:
+        raise ValueError("Mismatched parentheses in the expression.")
+
+    return max_depth
