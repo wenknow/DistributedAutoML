@@ -6,11 +6,7 @@ Hivetrain's Incentivized AutoML Loss Subnet, a collaborative platform dedicated 
 
 Hivetrain's AutoML Subnet represents more than just an improvement in machine learning techniques; it embodies a paradigm shift in AI research and development. Our vision extends far beyond traditional AutoML, aiming to lay the groundwork for truly self-improving AI systems.
 
-### Expanding the AI Search Space
-
 We're not just optimizing existing AI components; we're expanding the search space of AI itself. By applying evolutionary algorithms to the very building blocks of AI - loss functions, activation functions, and potentially entire algorithms - we're enabling AI to participate in its own evolution.
-
-### From Human-Centered to Machine-Centered AI Research
 
 Traditionally, AI advancements have been driven by human researchers. Our approach flips this model, allowing AI systems to explore and optimize their own architectures and components. This shift towards machine-centered AI research opens up possibilities far beyond what human intuition alone can achieve.
 
@@ -22,8 +18,6 @@ While we're starting with specific components like loss functions, our long-term
 
 By distributing this search across a network of miners and validators, we're not just crowdsourcing compute power; we're crowdsourcing the future of AI. Each discovery, each optimization, brings us closer to AI systems that can innovate beyond their initial design.
 
-### Beyond Current State-of-the-Art
-
 Our goal isn't just to match human-designed AI components but to surpass them. We believe that machine-evolved algorithms have the potential to uncover optimizations and approaches that human researchers might never consider.
 
 ### Towards a Self-Improving AI Ecosystem
@@ -34,7 +28,11 @@ By participating in this subnet, you're not just mining for rewards or validatin
 
 ## Current Focus
 
-Currently running on Bittensor netuid 47 (100 testnet), we're starting with a loss function search where miners are incentivesed to find better loss functions for a neural networks.
+Currently running on Bittensor netuid (coming soon) (100 testnet), we're starting with a loss function search where miners are incentivesed to find better loss functions for a neural networks.
+
+The search for effective loss functions is a critical aspect of advancing deep learning. Loss functions play a pivotal role in guiding the training process of complex models, such as neural networks, by quantifying the difference between predicted outputs and actual targets. An optimal loss function can significantly enhance a model's ability to learn from large and intricate datasets, improve convergence rates, and ultimately lead to better generalization on unseen data. As deep learning applications grow increasingly sophisticated, the need for customized loss functions tailored to specific tasks—such as image classification, natural language processing, or generative modeling—becomes more pronounced.
+
+In recent years, traditional loss functions have faced challenges in addressing unique deep learning complexities, such as handling class imbalance, noise, and varying data distributions. This is where loss function search becomes essential; it enables researchers and practitioners to automate the discovery of innovative loss functions that can outperform standard ones in deep learning contexts. By leveraging advanced techniques such as genetic algorithms and automated machine learning (AutoML), the search for new loss functions not only accelerates the model development process but also pushes the boundaries of what is achievable in deep learning. Refining loss functions can lead to more robust and accurate models, fostering advancements across various industries, from healthcare to autonomous systems, where the performance and reliability of deep learning models are paramount.
 
 ## Roadmap
 
@@ -42,9 +40,10 @@ Future steps include scaling up the complexity and generality of evaluations as 
 
 1. Loss functions, Activations (We are here)
 2. Optimizers
-3. Layer Components
-4. Meta-learning
-5. Evolving Evolutionary Algorithms/Self-improving algorithms
+3. Quantization functions
+4. Layer Components
+5. Meta-learning
+6. Evolving Evolutionary Algorithms/Self-improving algorithms
 
 ### Why This Is Needed
 Deep learning models have achieved remarkable success across various domains, from computer vision and natural language processing to reinforcement learning and beyond. However, these models often rely on hand designed features. AI has proven superhuman performance in many domains, including chess, go, medical diagnostics and music generation. We think that AI research should be added to this list. By training AI to design traditionally hand designed features and components of AI algorithms we move towards self-improving AI and superintelligence. 
@@ -65,21 +64,30 @@ You have two main approaches as a miner:
      - Run an independent miner.
    - If you don't:
      - Joing a mining pool (work in progress)
+       
+#### Requirements
+    4-8 core CPU
+    16 GB RAM
+    200 GB storage
+    No GPU required at this stage
 
 ### As a Validator
 
 We welcome validators and are committed to supporting you. We can assist with setup, automation, cost-reduction, and other measures to reduce friction. Please note: Do not copy weights.
 
-## FAQs
+#### Requirements
+    4-8 core CPU
+    16 GB RAM
+    200 GB storage
+    No GPU required at this stage
 
+## FAQs
 **Q: Is there research backing your claims?**  
 A: Yes, our work is inspired by and based on several research papers:
 - [AutoML-Zero: Evolving Machine Learning Algorithms From Scratch](https://arxiv.org/abs/2003.03384)
 - [Lion: Adversarial Distillation of Closed-Source Large Language Model](https://arxiv.org/abs/2302.06675)
 - For more AutoML research areas, refer to the [AutoML Conference 2024](https://2024.automl.cc/)
 
-**Q: Are you done with distributed training?**  
-A: We're still developing our distributed training solution, experiments are running. 
 
 ## Getting Started
 

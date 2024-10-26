@@ -32,7 +32,7 @@ btcli s register
 Edit the config files in the configs/ folder to set the following configurations:
 
 - Bittensor Config:
-- `netuid`: Set the network UID (100 for testnet, 38 for mainnet)
+- `netuid`: Set the network UID (100 for testnet, 49 for mainnet)
 - `wallet_name`: Set your wallet name
 - `wallet_hotkey`: Set your wallet hotkey
 - `network`: Set to "test" for testnet or "finney" for mainnet

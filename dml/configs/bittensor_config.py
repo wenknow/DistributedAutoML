@@ -1,7 +1,7 @@
 import bittensor as bt
 
 class BittensorConfig:
-    netuid = 47
+    netuid = 49
     wallet_name = "your_coldkey_name"
     wallet_hotkey = "your_hotkey_name"
     path = "~/.bittensor/wallets/"
