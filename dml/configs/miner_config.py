@@ -10,7 +10,7 @@ class MinerConfig:
     migration_interval = 100
     migrants_per_round = 10
     miner_type = "loss"
-    num_processes = 4
+    num_processes = 1
     pool_url = None #"http://127.0.0.1:5000"
     population_size = 200 # Per process pop = population_size // num_processes
     push_platform = "hf"
