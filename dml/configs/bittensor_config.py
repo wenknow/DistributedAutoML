@@ -19,5 +19,5 @@ class BittensorConfig:
         bt_config.wallet.hotkey = cls.wallet_hotkey
         bt_config.subtensor.network = cls.network
         bt_config.epoch_length = cls.epoch_length
-        #bt_config.subtensor.chain_endpoint = cls.Bittensor.subtensor_chain_endpoint
+        #bt_config.subtensor.chain_endpoint = cls.subtensor_chain_endpoint
         return bt_config
