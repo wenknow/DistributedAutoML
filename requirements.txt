@@ -4,5 +4,5 @@ huggingface-hub==0.24.6
 pandas==2.1.1
 python-dotenv==1.0.1
 torch==2.5.1
-torchvision==0.20.0
+torchvision==0.21.0
 tqdm==4.66.5
