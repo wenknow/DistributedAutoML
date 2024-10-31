@@ -28,13 +28,6 @@ def main(config):
     # Initialize Chain Manager and HF Manager
     config.chain_manager =  ChainMultiAddressStore(BittensorNetwork.subtensor, bt_config.netuid, BittensorNetwork.wallet)
     
-    config.hf_manager = HFManager(
-        local_dir=".",
-        hf_token=config.hf_token,
-        gene_repo_id=config.gene_repo,
-        device=config.device
-    )
-    
     # Create and start validator
     validator = ValidatorFactory.get_validator(config)
     validator.measure_baseline()
