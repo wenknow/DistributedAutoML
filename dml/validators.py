@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 
 from deap import algorithms, base, creator, tools, gp
 
+from dml.configs.validator_config import constrained_decay
 from dml.models import BaselineNN, EvolvableNN, EvolvedLoss
 from dml.gene_io import load_individual_from_json
 from dml.ops import create_pset_validator
@@ -181,7 +182,7 @@ class BaseValidator(ABC):
                 active_weights = top_k_weights[:len(top_k_scores)]
             else:
                 top_k_scores = heapq.nlargest(len(score_hotkey_pairs), score_hotkey_pairs)
-                active_weights = [1.0 / len(score_hotkey_pairs)] * len(score_hotkey_pairs)
+                active_weights = constrained_decay(len(score_hotkey_pairs), 5.0)#[1.0 / len(score_hotkey_pairs)] * len(score_hotkey_pairs)
             
             remaining_weight = 1.0 - sum(active_weights)
             weight_per_remaining = remaining_weight / (len(self.bittensor_network.metagraph.hotkeys) - len(top_k_scores))

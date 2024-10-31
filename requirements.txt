@@ -1,6 +1,7 @@
-bittensor==7.4.0
+bittensor==8.2.0
 deap==1.4.1
 huggingface-hub==0.24.6
+numpy<2.0.0
 pandas==2.1.1
 python-dotenv==1.0.1
 torch==2.1.0
