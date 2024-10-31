@@ -1,7 +1,6 @@
 import heapq
 import logging
 import os
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -61,12 +60,6 @@ class BaseValidator(ABC):
         self.toolbox.register("expr_mut", gp.genFull, min_=0, max_=2)
         self.toolbox.register("mutate", gp.mutUniform, expr=self.toolbox.expr_mut, pset=self.pset)
 
-    def log_metrics(self, iteration, scores):
-        self.metrics_data.append({'iteration': iteration, **scores})
-        
-        if len(self.metrics_data) % 5 == 0:
-            df = pd.DataFrame(self.metrics_data)
-            df.to_csv(self.metrics_file, index=False)
 
     def calculate_time_penalty(self, new_timestamp: float, old_timestamp: float) -> float:
         time_diff = new_timestamp - old_timestamp
@@ -197,7 +190,6 @@ class BaseValidator(ABC):
         logging.info(f"Pre-normalization scores: {self.scores}")
         logging.info(f"Normalized scores: {self.normalized_scores}")
                 
-        self.log_metrics(len(self.metrics_data), self.normalized_scores)
 
         if self.bittensor_network.should_set_weights():
             self.bittensor_network.set_weights(self.normalized_scores)
