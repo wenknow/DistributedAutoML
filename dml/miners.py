@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
 import logging 
-import pandas as pd
 import numpy as np
 import random 
 import math 
@@ -77,14 +76,7 @@ class BaseMiner(ABC, PushMixin):
         self.toolbox.register("mutate", gp.mutUniform, expr=self.toolbox.expr_mut, pset=self.pset)
         self.toolbox.decorate("mutate", gp.staticLimit(operator.attrgetter('height'), self.config.Miner.gp_tree_height))
 
-    def log_metrics(self, metrics):
-        self.metrics_data.append(metrics)
-        
-        # Save to CSV every 10 generations
-        if len(self.metrics_data) % 10 == 0:
-            df = pd.DataFrame(self.metrics_data)
-            df.to_csv(self.metrics_file, index=False)
-
+    
     
 
     def emigrate_genes(self, best_gene):

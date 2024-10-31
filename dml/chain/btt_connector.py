@@ -134,8 +134,13 @@ class BittensorNetwork:
 
     @classmethod
     def should_set_weights(cls) -> bool:
-        with cls._lock:  # Assuming last_update modification is protected elsewhere with the same lock
-            return (cls.subtensor.get_current_block() - cls.metagraph.last_update[cls.uid]) > cls.config.epoch_length
+            try:
+                with cls._lock:  # Assuming last_update modification is protected elsewhere with the same lock
+                    return (cls.subtensor.get_current_block() - cls.metagraph.last_update[cls.uid]) > cls.config.epoch_length
+            except:
+                logging.error("Failed to check whether weights should be set. Attempting to set weights anyways")
+            
+        
 
     @classmethod
     def resync_metagraph(cls,lite=True):
