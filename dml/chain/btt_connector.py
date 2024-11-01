@@ -10,7 +10,6 @@ import bittensor.utils.networking as net
 import threading
 import logging
 from . import __spec_version__
-from bittensor import logging
 
 class BittensorNetwork:
     _instance = None
