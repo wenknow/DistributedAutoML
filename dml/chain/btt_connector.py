@@ -74,26 +74,26 @@ class BittensorNetwork:
             logging.info(f"raw_weights {cls.base_scores}")
             logging.info(f"raw_weight_uids {uids}")
             # Process the raw weights to final_weights via subtensor limitations.
-            (
-                processed_weight_uids,
-                processed_weights,
-            ) = bt.utils.weight_utils.process_weights_for_netuid(
-                uids=uids.to("cpu").detach().numpy(),
-                weights=cls.base_scores.to("cpu").detach().numpy(),
-                netuid=cls.config.netuid,
-                subtensor=cls.subtensor,
-                metagraph=cls.metagraph,
-            )
+            # (
+            #     processed_weight_uids,
+            #     processed_weights,
+            # ) = bt.utils.weight_utils.process_weights_for_netuid(
+            #     uids=uids.to("cpu").detach().numpy(),
+            #     weights=cls.base_scores.to("cpu").detach().numpy(),
+            #     netuid=cls.config.netuid,
+            #     subtensor=cls.subtensor,
+            #     metagraph=cls.metagraph,
+            # )
 
-            logging.info(f"processed_weights {processed_weights}")
-            logging.info(f"processed_weight_uids {processed_weight_uids}")
+            # logging.info(f"processed_weights {processed_weights}")
+            # logging.info(f"processed_weight_uids {processed_weight_uids}")
 
             # Convert to uint16 weights and uids.
             (
                 uint_uids,
                 uint_weights,
             ) = bt.utils.weight_utils.convert_weights_and_uids_for_emit(
-                uids=processed_weight_uids, weights=processed_weights
+                uids=uids, weights=cls.base_scores
             )
             logging.info("Sending weights to subtensor")
             
