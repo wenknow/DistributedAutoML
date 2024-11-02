@@ -11,14 +11,11 @@ import logging
 import numpy as np
 import random 
 import math 
-import pickle
 import dill
 import operator
-import torch.multiprocessing as torch_mp
 import multiprocessing as mp
 from multiprocessing import Queue, Process, Pool, Value
 import time 
-import threading
 import queue
 
 from deap import algorithms, base, creator, tools, gp
