@@ -11,19 +11,18 @@ import logging
 import numpy as np
 import random 
 import math 
-import pickle
+import dill
 import operator
-import torch.multiprocessing as torch_mp
 import multiprocessing as mp
-import time 
-
 from multiprocessing import Queue, Process, Pool, Value
+import time 
 import queue
 
 from deap import algorithms, base, creator, tools, gp
 from functools import partial
 
 from dml.models import BaselineNN, EvolvableNN
+from dml.deap_individual import FitnessMax, Individual
 from dml.ops import create_pset
 from dml.gene_io import save_individual_to_json, load_individual_from_json, safe_eval
 from dml.gp_fix import SafePrimitiveTree
@@ -39,32 +38,21 @@ class BaseMiner(ABC, PushMixin):
         self.config = config
         self.device = self.config.device
         self.seed = self.config.Miner.seed
-
         set_seed(self.seed)
-    
-        #self.migration_server_url = config.Miner.migration_server_url
-        #self.migration_interval = config.Miner.migration_interval
         self.setup_logging()
         self.metrics_file = config.metrics_file
         self.metrics_data = []
-        
-        self.push_destinations = []
-
-        
+        self.push_destinations = [] 
         # DEAP utils
         self.initialize_deap()
 
         
     def initialize_deap(self):
+        from dml.deap_individual import FitnessMax, Individual
         self.toolbox = base.Toolbox()
         self.pset = create_pset()
-
-        creator.create("FitnessMax", base.Fitness, weights=(1.0,))
-        creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessMax)
-
-        
         self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=1, max_=3)
-        self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.expr)
+        self.toolbox.register("individual", tools.initIterate, Individual, self.toolbox.expr)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("compile", gp.compile, pset=self.pset)
         self.toolbox.register("evaluate", self.create_n_evaluate)
@@ -77,15 +65,11 @@ class BaseMiner(ABC, PushMixin):
         self.toolbox.decorate("mutate", gp.staticLimit(operator.attrgetter('height'), self.config.Miner.gp_tree_height))
 
     
-    
-
-    def emigrate_genes(self, best_gene):
-        
+    def emigrate_genes(self, best_gene): 
         # Submit best gene
         gene_data = []
         for gene in best_gene:
             gene_data.append(save_individual_to_json(gene=gene))
-
         response = requests.post(f"{self.migration_server_url}/submit_gene", json=gene_data)
 
         if response.status_code == 200:
@@ -121,54 +105,40 @@ class BaseMiner(ABC, PushMixin):
         logging.info(f"Baseline model accuracy: {self.baseline_accuracy:.4f}")
     
 
-    def save_checkpoint(self, population, hof, best_individual_all_time, generation, random_state, torch_rng_state, numpy_rng_state, checkpoint_file):
-        # Convert population and hof individuals to string representations and save fitness
-        population_data = [(str(ind), ind.fitness.values) for ind in population]
-        hof_data = [(str(ind), ind.fitness.values) for ind in hof]
-        
-        # Serialize best_individual_all_time
-        if best_individual_all_time is not None:
-            best_individual_str = str(best_individual_all_time)
-            best_individual_fitness = best_individual_all_time.fitness.values
-        else:
-            best_individual_str = None
-            best_individual_fitness = None
-        
+    def save_checkpoint(self, population, hof, best_individual_all_time, generation,
+                    random_state, torch_rng_state, numpy_rng_state, checkpoint_file):
         checkpoint = {
-            'population': population_data,
-            'hof': hof_data,
-            'best_individual_all_time': (best_individual_str, best_individual_fitness),
+            'population': population,
+            'hof': hof,
+            'best_individual_all_time': best_individual_all_time,
             'generation': generation,
             'random_state': random_state,
             'torch_rng_state': torch_rng_state,
             'numpy_rng_state': numpy_rng_state
         }
         with open(checkpoint_file, 'wb') as cp_file:
-            pickle.dump(checkpoint, cp_file)
+            dill.dump(checkpoint, cp_file)
 
     def load_checkpoint(self, checkpoint_file):
+        
         with open(checkpoint_file, 'rb') as cp_file:
-            checkpoint = pickle.load(cp_file)
+            checkpoint = dill.load(cp_file)
         
-        # Reconstruct population and hof individuals from strings and restore fitness
-        population_data = checkpoint['population']
-        population = []
-        for expr_str, fitness_values in population_data:
-            ind = creator.Individual(SafePrimitiveTree.from_string(expr_str, self.pset, safe_eval))
-            ind.fitness.values = fitness_values
-            population.append(ind)
+        # Restore population, hof, and best_individual_all_time directly
+        population = checkpoint['population']
+        hof = checkpoint['hof']
+        best_individual_all_time = checkpoint['best_individual_all_time']
+        
+        # Restore random states
+        random.setstate(checkpoint['random_state'])
+        torch.set_rng_state(checkpoint['torch_rng_state'])
+        np.random.set_state(checkpoint['numpy_rng_state'])
+        
+        # Get the generation number
+        generation = checkpoint['generation']
+        
+        return population, hof, best_individual_all_time, generation
 
-       
-        
-        hof_data = checkpoint['hof']
-        hof = tools.HallOfFame(maxsize=len(hof_data))
-        for expr_str, fitness_values in hof_data:
-            ind = creator.Individual(SafePrimitiveTree.from_string(expr_str, self.pset, safe_eval))
-            ind.fitness.values = fitness_values
-            hof.insert(ind)
-        
-        
-        
         # Reconstruct best_individual_all_time
         best_individual_str, best_individual_fitness = checkpoint['best_individual_all_time']
         if best_individual_str is not None:
@@ -251,8 +221,8 @@ class BaseMiner(ABC, PushMixin):
             logging.info("Starting evolution from scratch")
         
         stats = tools.Statistics(lambda ind: ind.fitness.values)
-        stats.register("avg", torch.mean)
-        stats.register("min", torch.min)  # Replaced np with torch
+        stats.register("avg", np.mean)
+        stats.register("min", np.min)  # Replaced np with torch
         
         for generation in tqdm(range(start_generation, self.config.Miner.generations)):
             # Evaluate the entire population
@@ -313,11 +283,7 @@ class BaseMiner(ABC, PushMixin):
         
             invalid_ind = [ind for ind in population if not ind.fitness.valid]
             for i, ind in enumerate(invalid_ind): 
-                #try:
                 ind.fitness.values = self.toolbox.evaluate(ind, train_loader, val_loader)
-                # except SyntaxError as syn: 
-                #     logging.warn(f"Syntax Error - Depth likely exceeded: {syn}")
-                #     ind.fitness.values = [0]
                 logging.debug(f"Gen {generation}, New Individual {i}: Fitness = {ind.fitness.values[0]}")
         
             # Update the hall of fame with the generated individuals
@@ -328,11 +294,17 @@ class BaseMiner(ABC, PushMixin):
         
             # Gather all the fitnesses in one list and print the stats
             fits = [ind.fitness.values[0] for ind in population if not math.isinf(ind.fitness.values[0])]
-            
-            length = len(population)
-            mean = sum(fits) / length if fits else float('inf')
-            sum2 = sum(x*x for x in fits) if fits else float('inf')
-            std = abs(sum2 / length - mean*2)*0.5 if fits else float('inf')
+            length = len(fits)
+            if length > 0:
+                mean = np.mean(fits)
+                min_fit = np.min(fits)
+                max_fit = np.max(fits)
+                if length > 1:
+                    std = np.std(fits, ddof=1)  # Use ddof=1 for sample standard deviation
+                else:
+                    std = float('nan')
+            else:
+                mean = min_fit = max_fit = std = float('nan')
             
             logging.info(f"Generation {generation}: Valid fits: {len(fits)}/{length}")
             logging.info(f"Min {min(fits) if fits else float('inf')}")
@@ -358,7 +330,8 @@ class BaseMiner(ABC, PushMixin):
             random_state = random.getstate()
             torch_rng_state = torch.get_rng_state()
             numpy_rng_state = np.random.get_state()
-            self.save_checkpoint(population, hof, best_individual_all_time, generation, random_state, torch_rng_state, numpy_rng_state, checkpoint_file)
+            self.save_checkpoint(population, hof, best_individual_all_time, generation, random_state, torch_rng_state
+                                 , numpy_rng_state, checkpoint_file)
         
         # Evolution finished
         logging.info("Evolution finished")
@@ -369,16 +342,6 @@ class BaseMiner(ABC, PushMixin):
         
         return best_individual_all_time
 
-    
-    # def evaluate_population(self, population, train_loader, val_loader):
-    #     for genome in tqdm(population):
-    #         genome.memory.reset()
-    #         try:
-    #             model = self.create_model(genome)
-    #             self.train(model, train_loader)
-    #             genome.fitness = self.evaluate(model, val_loader)
-    #         except:
-    #             genome.fitness = -9999
 
     @staticmethod
     def setup_logging(log_file='miner.log'):
@@ -388,14 +351,6 @@ class BaseMiner(ABC, PushMixin):
             format='%(asctime)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-
-    # def get_best_migrant(self):
-    #     response = requests.get(f"{self.migration_server_url}/get_best_fitness")
-    #     best_fitness = response.json()["best_fitness"]
-    #     if type(best_fitness) == float:
-    #         return best_fitness
-    #     else:
-    #         return -1
 
 class BaseHuggingFaceMiner(BaseMiner):
     def __init__(self, config):
@@ -443,7 +398,6 @@ class IslandMiner(BaseMiner):
         self.population_per_island = config.Miner.population_size // self.num_islands
         self.migrants_per_round = getattr(config.Miner, 'migrants_per_round', 1)  # Default to 1 if not specified
         self._shutdown = False
-
         self.best_global_fitness = Value('d', -float('inf'))
 
         # Validate migrants per round
@@ -451,28 +405,71 @@ class IslandMiner(BaseMiner):
             logging.warning(f"migrants_per_round ({self.migrants_per_round}) must be less than population_per_island ({self.population_per_island})")
             self.migrants_per_round = self.population_per_island // 2
             logging.warning(f"Setting migrants_per_round to {self.migrants_per_round}")
-        
+    
+    def save_checkpoint(self, population, generation,local_best,local_best_fitness, random_state, torch_rng_state
+                        , numpy_rng_state,checkpoint_file):
+        """Saves island checkpoint"""
+        checkpoint = {
+            'population': population,
+            'generation': generation + 1,
+            'local_best': local_best,
+            'local_best_fitness': local_best_fitness,
+            'random_state': random.getstate(),
+            'torch_rng_state': torch.get_rng_state(),
+            'numpy_rng_state': np.random.get_state()
+        }
+        with open(checkpoint_file, 'wb') as f:
+            dill.dump(checkpoint, f)
+
+    
+    def load_checkpoint(self, checkpoint_file):
+        with open(checkpoint_file, 'rb') as f:
+            checkpoint = dill.load(f)
+        population = checkpoint['population']
+        generation = checkpoint['generation']
+        local_best = checkpoint['local_best']
+        local_best_fitness = checkpoint['local_best_fitness']
+        # Restore random states
+        random.setstate(checkpoint['random_state'])
+        torch.set_rng_state(checkpoint['torch_rng_state'])
+        np.random.set_state(checkpoint['numpy_rng_state'])        
+        return population,generation,local_best, local_best_fitness
+
+
     def run_island(self, island_id, migration_in_queue, migration_out_queue, stats_queue, global_best_queue):
         random.seed(self.seed + island_id)
         torch.manual_seed(self.seed + island_id)
+        np.random.seed(self.seed + island_id)
+
+        from dml.deap_individual import FitnessMax, Individual
         
-        population = self.toolbox.population(n=self.population_per_island)
+        # Define checkpoint file path
+        checkpoint_file = os.path.join(LOCAL_STORAGE_PATH,f'island_{island_id}_checkpoint.pkl')
+
+        # Check if checkpoint file exists and load it
+        if os.path.exists(checkpoint_file):
+            population,generation,local_best, local_best_fitness = self.load_checkpoint(checkpoint_file)
+            logging.info(f"Island {island_id} resuming from generation {generation}")
+        else:
+            # Initialize population and variables
+            logging.info("No checkpoint found, starting fresh")
+            population = self.toolbox.population(n=self.population_per_island)
+            generation = 0
+            local_best = None
+            local_best_fitness = -float('inf')
+            logging.info(f"Island {island_id} starting from scratch")
+        
         train_loader, val_loader = self.load_data()
         
-        local_best = None
-        local_best_fitness = -float('inf')
-        
-        for generation in range(self.config.Miner.generations):
+        while generation < self.config.Miner.generations:
             # Evolution step
             if self._shutdown:
                 break
-
             offspring = algorithms.varOr(
                 population, self.toolbox,
                 lambda_=self.population_per_island,
                 cxpb=0.5, mutpb=0.2
             )
-            
             # Evaluate
             for ind in offspring:
                 if not ind.fitness.valid:
@@ -494,10 +491,10 @@ class IslandMiner(BaseMiner):
             stats = {
                 "island": island_id,
                 "generation": generation,
-                "best": max(fits),
-                "avg": sum(fits) / len(fits),
-                "worst": min(fits),
-                "std": torch.tensor(fits).std().item()
+                "best": np.max(fits),
+                "avg": np.sum(fits) / len(fits),
+                "worst": np.min(fits),
+                "std": np.std(fits)#torch.tensor(fits).std().item()
             }
             stats_queue.put(stats)
             
@@ -519,9 +516,18 @@ class IslandMiner(BaseMiner):
                     worst_indices = [population.index(ind) for ind in tools.selWorst(population, len(incoming_migrants))]
                     for idx, migrant in zip(worst_indices, incoming_migrants):
                         population[idx] = migrant
-                except:
+                except queue.Empty:
                     logging.debug(f"Island {island_id} no incoming migrants this cycle")
                     pass
+
+            # Save checkpoint
+            random_state = random.getstate()
+            torch_rng_state = torch.get_rng_state()
+            numpy_rng_state = np.random.get_state()
+            self.save_checkpoint(population,generation,local_best,local_best_fitness, random_state, 
+                                 torch_rng_state, numpy_rng_state,checkpoint_file)
+            logging.info(f"Island {island_id} saved checkpoint at generation {generation + 1}")
+            generation +=1
 
     def mine(self):
         try:
@@ -529,7 +535,7 @@ class IslandMiner(BaseMiner):
             migration_out_queue = Queue()
             stats_queue = Queue()
             global_best_queue = Queue()
-            
+
             processes = []
             for i in range(self.num_islands):
                 p = Process(
@@ -538,87 +544,79 @@ class IslandMiner(BaseMiner):
                 )
                 processes.append(p)
                 p.start()
-            
+
             best_overall = None
             island_stats = {i: [] for i in range(self.num_islands)}
             generation = 0
-            
+
             while any(p.is_alive() for p in processes):
-                # Handle exceptional individuals first
-                if generation > 0:
-                    logging.info(f"Best overall fitness:{best_overall.fitness.values[0]}")
+                if generation > 0 and best_overall:
+                    logging.info(f"Best overall fitness:{best_overall.fitness.values[0]:.4f}")
                 try:
                     candidates = []
                     try:
-                        while True:  # Collect all available candidates
+                        while True:
                             source_island, exceptional_ind = global_best_queue.get_nowait()
                             candidates.append((source_island, exceptional_ind))
-                            
                     except queue.Empty:
-                        if candidates:  # If we found any candidates
-                            # Find the best candidate from this batch
+                        if candidates:
                             best_candidate = max(candidates, key=lambda x: x[1].fitness.values[0])
                             source_island, candidate = best_candidate
-                            
-                            # Check if it's better than our overall best
+
                             if (best_overall is None or 
                                 candidate.fitness.values[0] > best_overall.fitness.values[0]):
-                                
                                 
                                 best_overall = deepcopy(candidate)
                                 with self.best_global_fitness.get_lock():
                                     self.best_global_fitness.value = candidate.fitness.values[0]
-                                    
+
                                 self.push_to_remote(best_overall, 
                                                 f"{source_island}_{candidate.fitness.values[0]:.4f}")
-                                            
-                except Exception as e:
-                    logging.warn(f"Failed to push to remote: {e}")
-                    
-                # Handle regular migrations
-                try:
-                    source_island, migrants = migration_out_queue.get_nowait()
-                    # Check if any migrant is better than current best
-                    for migrant in migrants:
-                        if (best_overall is None or 
-                            migrant.fitness.values[0] > best_overall.fitness.values[0]):
-                            best_overall = deepcopy(migrant)
-                            self.push_to_remote(best_overall, 
-                                            f"{generation}_{migrant.fitness.values[0]:.4f}")
-                    
-                    # Distribute migrants to other islands
-                    for i, q in enumerate(migration_in_queues):
-                        if i != source_island:
-                            q.put((source_island, [deepcopy(m) for m in migrants]))
-                except:
-                    pass
+                    except Exception as e:
+                        logging.warning(f"Failed to push to remote: {e}")
 
-                # Handle stats
-                try:
-                    stats = stats_queue.get_nowait()
-                    island_stats[stats["island"]].append(stats)
-                    logging.info(f"Island {stats['island']} Gen {stats['generation']}: "
-                        f"Best={stats['best']:.4f} Avg={stats['avg']:.4f}")
-                    generation = int(stats['generation'])
-                except:
-                    time.sleep(0.1)
-                    
-                time.sleep(10)
+                    # Handle regular migrations
+                    try:
+                        source_island, migrants = migration_out_queue.get_nowait()
+                        for migrant in migrants:
+                            if (best_overall is None or 
+                                migrant.fitness.values[0] > best_overall.fitness.values[0]):
+                                best_overall = deepcopy(migrant)
+                                self.push_to_remote(best_overall, 
+                                                f"{generation}_{migrant.fitness.values[0]:.4f}")
+
+                        for i, q in enumerate(migration_in_queues):
+                            if i != source_island:
+                                q.put((source_island, [deepcopy(m) for m in migrants]))
+                    except queue.Empty:
+                        pass
+
+                    # Handle stats
+                    try:
+                        stats = stats_queue.get_nowait()
+                        island_stats[stats["island"]].append(stats)
+                        logging.info(f"Island {stats['island']} Gen {stats['generation']}: "
+                            f"Best={stats['best']:.4f} Avg={stats['avg']:.4f}")
+                        generation = int(stats['generation'])
+                    except queue.Empty:
+                        time.sleep(0.1)
+
+                    time.sleep(1)  # Adjust sleep time as needed
+
+                except KeyboardInterrupt:
+                    logging.info("Received interrupt signal, initiating shutdown...")
+                    self.shutdown()
+                    break
 
             for p in processes:
                 p.join()
-                
+
             return best_overall
-        
-        except KeyboardInterrupt:
-            logging.info("Received interrupt signal, initiating shutdown...")
-            self.shutdown()
-            raise
-        
+
         finally:
             # Clean up processes
             self.shutdown()
-            
+
             # Clear all queues
             for q in migration_in_queues:
                 while not q.empty():
@@ -626,7 +624,7 @@ class IslandMiner(BaseMiner):
                         q.get_nowait()
                     except:
                         pass
-            
+
             for q in [migration_out_queue, stats_queue, global_best_queue]:
                 while not q.empty():
                     try:
@@ -639,9 +637,10 @@ class IslandMiner(BaseMiner):
                 if p.is_alive():
                     p.terminate()
                 p.join(timeout=5)
-                
+
             logging.info("All processes cleaned up")
 
+    
     def shutdown(self):
         """Signal all islands to shutdown gracefully"""
         self._shutdown = True
@@ -704,12 +703,6 @@ class LossMiner(BaseMiner):
     def __init__(self, config):
         super().__init__(config)
         #self.seed_population()
-
-    # def seed_population(self, mse = True):
-    #     population = self.toolbox.population(n=50)
-    #     mse_population = [seed_with_mse(len(ind), ind.memory, ind.function_decoder, 
-    #                                     ind.input_addresses, ind.output_addresses) for ind in population]
-    #     return mse_population
 
     def load_data(self):
         transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
