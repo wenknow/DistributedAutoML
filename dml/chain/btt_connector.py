@@ -10,7 +10,6 @@ import bittensor.utils.networking as net
 import threading
 import logging
 from . import __spec_version__
-from bittensor import logging
 
 class BittensorNetwork:
     _instance = None
@@ -74,26 +73,26 @@ class BittensorNetwork:
             logging.info(f"raw_weights {cls.base_scores}")
             logging.info(f"raw_weight_uids {uids}")
             # Process the raw weights to final_weights via subtensor limitations.
-            (
-                processed_weight_uids,
-                processed_weights,
-            ) = bt.utils.weight_utils.process_weights_for_netuid(
-                uids=uids.to("cpu").detach().numpy(),
-                weights=cls.base_scores.to("cpu").detach().numpy(),
-                netuid=cls.config.netuid,
-                subtensor=cls.subtensor,
-                metagraph=cls.metagraph,
-            )
+            # (
+            #     processed_weight_uids,
+            #     processed_weights,
+            # ) = bt.utils.weight_utils.process_weights_for_netuid(
+            #     uids=uids.to("cpu").detach().numpy(),
+            #     weights=cls.base_scores.to("cpu").detach().numpy(),
+            #     netuid=cls.config.netuid,
+            #     subtensor=cls.subtensor,
+            #     metagraph=cls.metagraph,
+            # )
 
-            logging.info(f"processed_weights {processed_weights}")
-            logging.info(f"processed_weight_uids {processed_weight_uids}")
+            # logging.info(f"processed_weights {processed_weights}")
+            # logging.info(f"processed_weight_uids {processed_weight_uids}")
 
             # Convert to uint16 weights and uids.
             (
                 uint_uids,
                 uint_weights,
             ) = bt.utils.weight_utils.convert_weights_and_uids_for_emit(
-                uids=processed_weight_uids, weights=processed_weights
+                uids=uids, weights=cls.base_scores
             )
             logging.info("Sending weights to subtensor")
             
@@ -134,8 +133,13 @@ class BittensorNetwork:
 
     @classmethod
     def should_set_weights(cls) -> bool:
-        with cls._lock:  # Assuming last_update modification is protected elsewhere with the same lock
-            return (cls.subtensor.get_current_block() - cls.metagraph.last_update[cls.uid]) > cls.config.epoch_length
+            try:
+                with cls._lock:  # Assuming last_update modification is protected elsewhere with the same lock
+                    return (cls.subtensor.get_current_block() - cls.metagraph.last_update[cls.uid]) > cls.config.epoch_length
+            except:
+                logging.error("Failed to check whether weights should be set. Attempting to set weights anyways")
+            
+        
 
     @classmethod
     def resync_metagraph(cls,lite=True):

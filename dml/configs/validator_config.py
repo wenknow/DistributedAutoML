@@ -5,7 +5,8 @@ def constrained_decay(n: int, ratio: float = 5.0):
     largest = smallest * ratio
     decay = np.linspace(largest, smallest, n)
     normalized_decay = decay / np.sum(decay)
-    return list(normalized_decay)
+   
+    return normalized_decay.tolist() 
 
 class ValidatorConfig:
     validation_interval = 11000  # Interval between validations in seconds

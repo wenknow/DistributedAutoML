@@ -1,6 +1,6 @@
 # Hivetrain AutoML Subnet
 
-Hivetrain's Incentivized AutoML Loss Subnet, a collaborative platform dedicated to revolutionizing deep learning by automating the discovery of improved and novel neural network components such loss functions, activation functions and potentially new algorithms that surpass the current state-of-the art. Inspired by the AutoML Zero paper, we leverage genetic programming to progressively develop increasingly complex mathematical functions using evolutionary and gradient based optimization.
+Hivetrain's Incentivized AutoML Loss Subnet is a collaborative platform dedicated to revolutionizing deep learning by automating the discovery of improved and novel neural network components such loss functions, activation functions and potentially new algorithms that surpass the current state-of-the art. Inspired by the AutoML Zero paper, we leverage genetic programming to progressively develop increasingly complex mathematical functions using evolutionary and gradient based optimization.
 
 ## Vision and Direction
 

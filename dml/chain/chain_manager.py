@@ -8,7 +8,7 @@ import lzma
 import base64
 import multiprocessing
 from typing import Optional, Any
-from bittensor.btlogging import logging
+import logging
 
 
 def _wrapped_func(func: functools.partial, queue: multiprocessing.Queue):
@@ -99,11 +99,11 @@ class ChainMultiAddressStore:
         # )
 
         try:
-            #metadata = run_in_subprocess(partial, 60)
-            metadata = bt.extrinsics.serving.get_metadata( self.subtensor, self.subnet_uid, hotkey)
+        #metadata = run_in_subprocess(partial, 60)
+            metadata = bt.core.extrinsics.serving.get_metadata( self.subtensor, self.subnet_uid, hotkey)
         except:
-            metadata = None
-            logging.warning(f"Failed to retreive multiaddress for: {hotkey}")
+             metadata = None
+             logging.warning(f"Failed to retreive multiaddress for: {hotkey}")
             
 
         if not metadata:
