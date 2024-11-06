@@ -188,7 +188,7 @@ class BaseMiner(ABC, PushMixin):
             model = self.create_model(individual, dataset.name)            
             try:
                 self.train(model, train_loader=dataset.train_loader)
-                fitness += self.evaluate(model, val_loader=dataset.val_loader)
+                fitness += self.evaluate(model, val_loader=dataset.val_loader) * dataset.weight
             except Exception as e:
                 logging.error(e)
                 return 0.0,
