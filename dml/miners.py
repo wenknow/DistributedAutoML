@@ -461,7 +461,7 @@ class IslandMiner(BaseMiner):
             local_best_fitness = -float('inf')
             logging.info(f"Island {island_id} starting from scratch")
         
-        train_loader, val_loader = self.load_data()
+        datasets = load_datasets(self.config.Miner.dataset_names)
         
         while generation < self.config.Miner.generations:
             # Evolution step
@@ -475,7 +475,7 @@ class IslandMiner(BaseMiner):
             # Evaluate
             for ind in offspring:
                 if not ind.fitness.valid:
-                    ind.fitness.values = self.create_n_evaluate(ind, train_loader, val_loader)
+                    ind.fitness.values = self.create_n_evaluate(ind, datasets)
                     
                     # Check for special migration case
                     if ind.fitness.values[0] > local_best_fitness:
