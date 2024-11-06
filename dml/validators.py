@@ -9,12 +9,14 @@ from abc import ABC, abstractmethod
 import time
 from huggingface_hub import HfApi, Repository
 import math 
+from requests.exceptions import Timeout
 
 from typing import Any, Dict, Optional
 
 from deap import algorithms, base, creator, tools, gp
 
 from dml.configs.validator_config import constrained_decay
+from dml.hf_timeout import TimeoutHfApi
 from dml.data import load_datasets
 from dml.models import BaselineNN, EvolvableNN, EvolvedLoss, get_model_for_dataset
 from dml.gene_io import load_individual_from_json
@@ -22,8 +24,10 @@ from dml.ops import create_pset_validator
 from dml.record import GeneRecordManager
 from dml.utils import set_seed
 
+
 class BaseValidator(ABC):
     def __init__(self, config):
+        
         self.config = config
         self.device = config.device
         self.chain_manager = config.chain_manager
@@ -38,6 +42,10 @@ class BaseValidator(ABC):
 
         self.penalty_factor = config.Validator.time_penalty_factor
         self.penalty_max_time = config.Validator.time_penalty_max_time
+
+        self.api = TimeoutHfApi()
+        self.max_retries = 3
+        self.retry_delay = 2
 
         set_seed(self.seed)
         
@@ -210,11 +218,11 @@ class BaseValidator(ABC):
             return True
 
     def receive_gene_from_hf(self, repo_name):
-        api = HfApi()
+        
         try:
-            file_info = api.list_repo_files(repo_id=repo_name)
+            file_info = self.api.list_repo_files(repo_id=repo_name)
             if "best_gene.json" in file_info:
-                file_details = [thing for thing in api.list_repo_tree(repo_id=repo_name) if thing.path=="best_gene.json"]
+                file_details = [thing for thing in self.api.list_repo_tree(repo_id=repo_name) if thing.path=="best_gene.json"]
                 if file_details:
                     file_size = file_details[0].size
                     max_size = self.config.Validator.max_gene_size
@@ -223,7 +231,7 @@ class BaseValidator(ABC):
                         logging.warning(f"Gene file size ({file_size} bytes) exceeds limit ({max_size} bytes). Skipping download.")
                         return None
                     
-                    gene_path = api.hf_hub_download(repo_id=repo_name, filename="best_gene.json")
+                    gene_path = self.api.hf_hub_download_with_timeout(repo_id=repo_name, filename="best_gene.json")
                     gene_content = load_individual_from_json(pset=self.pset, toolbox=self.toolbox, filename=gene_path)
                     os.remove(gene_path)
                     return gene_content
@@ -236,16 +244,23 @@ class BaseValidator(ABC):
         return None
     
     def get_remote_gene_hash(self, repo_name: str) -> str:
-        api = HfApi()
-        try:
-            file_info = api.list_repo_files(repo_id=repo_name)
-            if "best_gene.json" in file_info:
-                file_details = [thing for thing in api.list_repo_tree(repo_id=repo_name) if thing.path=="best_gene.json"]
-                if file_details:
-                    return file_details[0].blob_id  # This is effectively a hash of the file content
-        except Exception as e:
-            logging.error(f"Error retrieving gene hash from Hugging Face: {str(e)}")
-        return ""  # Return empty string if we couldn't get the hash
+
+        for attempt in range(self.max_retries):
+           
+            try:
+                file_info = self.api.list_repo_files_with_timeout(repo_id=repo_name)
+                if "best_gene.json" in file_info:
+                    file_details = [thing for thing in self.api.list_repo_tree_with_timeout(repo_id=repo_name) if thing.path=="best_gene.json"]
+                    if file_details:
+                        return file_details[0].blob_id  # This is effectively a hash of the file content
+            except Timeout:
+                    if attempt == self.max_retries - 1:
+                        raise TimeoutError(f"Failed to get repo files after {self.max_retries} attempts")
+                    print(f"Request timed out, retrying in {self.retry_delay} seconds...")
+                    time.sleep(self.retry_delay)
+            except Exception as e:
+                logging.error(f"Error retrieving gene hash from Hugging Face: {str(e)}")
+                return ""  # Return empty string if we couldn't get the hash
 
     def start_periodic_validation(self):
         while True:
@@ -335,7 +350,7 @@ class LossValidator(BaseValidator):
                 break
             optimizer.zero_grad()
             outputs = model(inputs)
-            targets_one_hot = torch.nn.functional.one_hot(targets, num_classes=10).float()
+            targets_one_hot = torch.nn.functional.one_hot(targets, num_classes=outputs.shape[-1]).float()
             loss = self.safe_evaluate( loss_function, outputs, targets_one_hot)
             
             loss.backward()
@@ -356,9 +371,14 @@ class LossValidator(BaseValidator):
                 if idx > 10:
                     break
                 outputs = model(inputs)
-                _, predicted = outputs.max(1)
-                total += targets.size(0)
-                correct += predicted.eq(targets).sum().item()
+                if len(outputs.shape) == 3:
+                    _, predicted = outputs.max(dim=-1)  
+                    total += targets.numel()  # Count all elements
+                    correct += predicted.eq(targets).sum().item()
+                else:
+                    _, predicted = outputs.max(1)
+                    total += targets.size(0)
+                    correct += predicted.eq(targets).sum().item()
         return correct / total
 
     def create_baseline_model(self):
