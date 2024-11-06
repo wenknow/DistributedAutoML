@@ -9,6 +9,7 @@ def constrained_decay(n: int, ratio: float = 5.0):
     return normalized_decay.tolist() 
 
 class ValidatorConfig:
+    dataset_names = ["shakespeare"]
     validation_interval = 11000  # Interval between validations in seconds
     validator_type = "loss"
     top_k = 50  # Number of top miners to distribute scores to

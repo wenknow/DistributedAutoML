@@ -15,7 +15,8 @@ from typing import Any, Dict, Optional
 from deap import algorithms, base, creator, tools, gp
 
 from dml.configs.validator_config import constrained_decay
-from dml.models import BaselineNN, EvolvableNN, EvolvedLoss
+from dml.data import load_datasets
+from dml.models import BaselineNN, EvolvableNN, EvolvedLoss, get_model_for_dataset
 from dml.gene_io import load_individual_from_json
 from dml.ops import create_pset_validator
 from dml.record import GeneRecordManager
@@ -86,9 +87,12 @@ class BaseValidator(ABC):
     def evaluate(self, model, val_loader):
         pass
 
-    def evaluate_individual(self, individual, val_loader):
-        model = self.create_model(individual)
-        return self.evaluate(model, val_loader),
+    def evaluate_individual(self, individual, datasets):
+        fitness = 0.0
+        for dataset in datasets:
+            model = self.create_model(individual, dataset.name)
+            fitness += self.evaluate(model, (dataset.train_loader, dataset.val_loader) )
+        return fitness,
 
     def create_baseline_model(self):
         return BaselineNN(input_size=28*28, hidden_size=128, output_size=10)
@@ -109,8 +113,8 @@ class BaseValidator(ABC):
             logging.info("This validator is no longer registered on the chain.")
             return
 
-        _, val_loader = self.load_data()
-        total_scores = 0
+        datasets = load_datasets(self.config.Validator.dataset_names)
+        total_scores = 0.0
         best_gene = self.find_best_gene()
         current_time = time.time()
 
@@ -124,7 +128,7 @@ class BaseValidator(ABC):
                 if gene is not None:
                     logging.info(f"Receiving gene from: {hotkey_address} ---> {hf_repo}")
                     
-                    accuracy = self.evaluate_individual(gene[0], val_loader)[0]
+                    accuracy = self.evaluate_individual(gene[0], datasets)[0]
                     accuracy_score = accuracy#max(0, accuracy - self.base_accuracy)
 
                     if best_gene is None or accuracy_score > best_gene['performance']:
@@ -289,8 +293,9 @@ class LossValidator(BaseValidator):
         val_loader = DataLoader(val_data, batch_size=128, shuffle=False, generator=torch.Generator().manual_seed(self.seed))
         return train_loader, val_loader
 
-    def create_model(self, individual):
-        return BaselineNN(input_size=28*28, hidden_size=128, output_size=10).to(self.device), self.toolbox.compile(expr=individual)
+    def create_model(self, individual, dataset_name):
+        
+        return get_model_for_dataset(dataset_name), self.toolbox.compile(expr=individual)
 
     @staticmethod
     def safe_evaluate(func, outputs, labels):
@@ -338,7 +343,7 @@ class LossValidator(BaseValidator):
 
     def evaluate(self, model_and_loss, val_loader=None):
         set_seed(self.seed)
-        train_dataloader, val_dataloader = self.load_data()
+        train_dataloader, val_dataloader = val_loader
         model, loss_function = model_and_loss
         model.train()
         self.train((model, loss_function), train_loader=train_dataloader)

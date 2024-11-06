@@ -290,7 +290,7 @@ def load_datasets(dataset_names: Union[str, List[str]], batch_size: int = 32) ->
             "output_size": None,  # Will be set after loading
             "hidden_size": 32,
             "learning_rate": 3e-4,
-            "weight": 2.0
+            "weight": 10.0
         }
     }
     
