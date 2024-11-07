@@ -136,8 +136,15 @@ class BaseValidator(ABC):
                 if gene is not None:
                     logging.info(f"Receiving gene from: {hotkey_address} ---> {hf_repo}")
                     
+                    if self.gene_record_manager.is_expression_duplicate(gene[0]):
+                        logging.warning(f"Duplicate expression detected from {hotkey_address}. Assigning zero score.")
+                        self.scores[hotkey_address] = 0
+                        continue
+
+
                     accuracy = self.evaluate_individual(gene[0], datasets)[0]
                     accuracy_score = accuracy#max(0, accuracy - self.base_accuracy)
+
 
                     if best_gene is None or accuracy_score > best_gene['performance']:
                         final_score = accuracy_score
@@ -147,7 +154,7 @@ class BaseValidator(ABC):
                         final_score = accuracy_score * time_penalty
                         logging.info(f"Penalty applied. Original score: {accuracy_score:.4f}, Final score: {final_score:.4f}")
 
-                    self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score)
+                    self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=gene[0])
 
                     self.scores[hotkey_address] = final_score
                     logging.info(f"Accuracy: {accuracy:.4f}")
