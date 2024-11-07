@@ -99,7 +99,9 @@ class BaseValidator(ABC):
         fitness = 0.0
         for dataset in datasets:
             model = self.create_model(individual, dataset.name)
-            fitness += self.evaluate(model, (dataset.train_loader, dataset.val_loader) )
+            model[0].to(self.config.device)
+            fitness += self.evaluate(model, (dataset.train_loader, dataset.val_loader) ) * dataset.weight
+            del model
         return fitness,
 
     def create_baseline_model(self):
