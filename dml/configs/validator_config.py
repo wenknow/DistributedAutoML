@@ -10,7 +10,7 @@ def constrained_decay(n: int, ratio: float = 5.0):
 
 class ValidatorConfig:
     dataset_names = ["shakespeare"]
-    validation_interval = 11000  # Interval between validations in seconds
+    validation_interval = 110  # Interval between validations in seconds
     validator_type = "loss"
     top_k = 50  # Number of top miners to distribute scores to
     min_score = 0.0  # Minimum score for miners not in the top-k
@@ -19,5 +19,6 @@ class ValidatorConfig:
     time_penalty_max_time = 7200  #1week
     max_gene_size = 1024*20
     seed = 42
+    validation_iterations = 1000
 
     

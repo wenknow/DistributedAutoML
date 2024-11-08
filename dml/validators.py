@@ -377,7 +377,7 @@ class LossValidator(BaseValidator):
         with torch.no_grad():
             for idx, (inputs, targets) in enumerate(val_dataloader):
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
-                if idx > 10:
+                if idx > self.config.Validator.validation_iterations:
                     break
                 outputs = model(inputs)
                 if len(outputs.shape) == 3:
