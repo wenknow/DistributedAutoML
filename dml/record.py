@@ -48,7 +48,7 @@ class GeneRecordManager:
             expr_hash = self._compute_expression_hash(expr)
             if expr_hash not in self.expression_registry:
                 created_at = list_repo_commits(repo_id=repo_name)[0].created_at.timestamp
-                self.expression_registry[expr_hash] = {"earliest_timestamp":created_at, "earliest_hotkey":miner_hotkey} #Check when scoring that the earliest is the one in question
+                self.expression_registry[expr_hash] = {"earliest_timestamp":created_at, "earliest_hotkey":miner_hotkey, "score":performance} #Check when scoring that the earliest is the one in question
             
             
 

@@ -146,16 +146,25 @@ class BaseValidator(ABC):
                             self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"] = created_at
                             copier_hotkey = self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] 
                             logging.warning(f"Copying detected. Reclaiming copied score from {copier_hotkey} to {hotkey_address}")
-                            self.scores[hotkey_address] = self.scores[copier_hotkey]
-                            self.scores[copier_hotkey] = 0.0
+                            
+                            
                             self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] = hotkey_address
                             #But what about the prior assigned scores
+                            accuracy_score = self.gene_record_manager.expression_registry[expr_hash]["score"]
+                            if accuracy_score > best_gene['performance']:
+                                final_score = accuracy_score
+                            else:
+                                time_penalty = self.calculate_time_penalty(current_time, best_gene['timestamp'])
+                                final_score = accuracy_score * time_penalty
+
+                            self.scores[hotkey_address] = final_score
+                            self.scores[copier_hotkey] = 0.0
                             self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=None, repo_name=hf_repo)
                             continue
                         else:
                             logging.warning(f"Duplicate expression detected from {hotkey_address}. Assigning zero score.")
                             self.scores[hotkey_address] = 0.0
-                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=None, repo_name=hf_repo)
+                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, 0.0, expr=None, repo_name=hf_repo)
                             continue
 
 
