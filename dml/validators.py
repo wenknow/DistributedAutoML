@@ -366,29 +366,33 @@ class LossValidator(BaseValidator):
             optimizer.step()
 
     def evaluate(self, model_and_loss, val_loader=None):
-        set_seed(self.seed)
-        train_dataloader, val_dataloader = val_loader
-        model, loss_function = model_and_loss
-        model.train()
-        self.train((model, loss_function), train_loader=train_dataloader)
-        model.eval()
-        correct = 0
-        total = 0
-        with torch.no_grad():
-            for idx, (inputs, targets) in enumerate(val_dataloader):
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
-                if idx > self.config.Validator.validation_iterations:
-                    break
-                outputs = model(inputs)
-                if len(outputs.shape) == 3:
-                    _, predicted = outputs.max(dim=-1)  
-                    total += targets.numel()  # Count all elements
-                    correct += predicted.eq(targets).sum().item()
-                else:
-                    _, predicted = outputs.max(1)
-                    total += targets.size(0)
-                    correct += predicted.eq(targets).sum().item()
-        return correct / total
+        try:
+            set_seed(self.seed)
+            train_dataloader, val_dataloader = val_loader
+            model, loss_function = model_and_loss
+            model.train()
+            self.train((model, loss_function), train_loader=train_dataloader)
+            model.eval()
+            correct = 0
+            total = 0
+            with torch.no_grad():
+                for idx, (inputs, targets) in enumerate(val_dataloader):
+                    inputs, targets = inputs.to(self.device), targets.to(self.device)
+                    if idx > self.config.Validator.validation_iterations:
+                        break
+                    outputs = model(inputs)
+                    if len(outputs.shape) == 3:
+                        _, predicted = outputs.max(dim=-1)  
+                        total += targets.numel()  # Count all elements
+                        correct += predicted.eq(targets).sum().item()
+                    else:
+                        _, predicted = outputs.max(1)
+                        total += targets.size(0)
+                        correct += predicted.eq(targets).sum().item()
+            return correct / total
+        except Exception as e:
+            logging.error("EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
+            return 0.0
 
     def create_baseline_model(self):
         return BaselineNN(input_size=28*28, hidden_size=128, output_size=10).to(self.device), torch.nn.MSELoss()
