@@ -4,6 +4,7 @@ import time
 import os
 from typing import Dict, Any, List
 import logging
+from huggingface_hub import list_repo_commits
 
 class GeneRecordManager:
     def __init__(self, json_file_path: str = 'gene_records.json', expression_registry_path: str = 'expression_registry.json'):
@@ -36,7 +37,7 @@ class GeneRecordManager:
         """Compute a unique hash for any expression"""
         return hashlib.sha256(str(expr).encode()).hexdigest()
 
-    def add_record(self, miner_hotkey: str, gene_hash: str, timestamp: float, performance: float, expr=None):
+    def add_record(self, miner_hotkey: str, gene_hash: str, timestamp: float, performance: float, expr=None, repo_name: str = None):
         self.records[miner_hotkey] = {
             'gene_hash': gene_hash,
             'timestamp': timestamp,
@@ -46,9 +47,13 @@ class GeneRecordManager:
         if expr is not None:
             expr_hash = self._compute_expression_hash(expr)
             if expr_hash not in self.expression_registry:
-                self.expression_registry[expr_hash] = []
-            if miner_hotkey not in self.expression_registry[expr_hash]:
-                self.expression_registry[expr_hash].append(miner_hotkey)
+                created_at = list_repo_commits(repo_id=repo_name)[0].created_at.timestamp
+                self.expression_registry[expr_hash] = {"earliest_timestamp":created_at, "earliest_hotkey":miner_hotkey} #Check when scoring that the earliest is the one in question
+            
+            
+
+            # if miner_hotkey not in self.expression_registry[expr_hash]:
+            #     self.expression_registry[expr_hash].append(miner_hotkey)
             self._save_expression_registry()
 
         self._save_records()

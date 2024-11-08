@@ -7,7 +7,7 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 from abc import ABC, abstractmethod
 import time
-from huggingface_hub import HfApi, Repository
+from huggingface_hub import HfApi, Repository, list_repo_commits
 import math 
 from requests.exceptions import Timeout
 
@@ -139,9 +139,24 @@ class BaseValidator(ABC):
                     logging.info(f"Receiving gene from: {hotkey_address} ---> {hf_repo}")
                     
                     if self.gene_record_manager.is_expression_duplicate(gene[0]):
-                        logging.warning(f"Duplicate expression detected from {hotkey_address}. Assigning zero score.")
-                        self.scores[hotkey_address] = 0
-                        continue
+                        expr_hash = self.gene_record_manager._compute_expression_hash(gene[0])
+                        created_at = list_repo_commits(repo_id=hf_repo)[0].created_at.timestamp
+                        if created_at < self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"]:
+                            
+                            self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"] = created_at
+                            copier_hotkey = self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] 
+                            logging.warning(f"Copying detected. Reclaiming copied score from {copier_hotkey} to {hotkey_address}")
+                            self.scores[hotkey_address] = self.scores[copier_hotkey]
+                            self.scores[copier_hotkey] = 0.0
+                            self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] = hotkey_address
+                            #But what about the prior assigned scores
+                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=None, repo_name=hf_repo)
+                            continue
+                        else:
+                            logging.warning(f"Duplicate expression detected from {hotkey_address}. Assigning zero score.")
+                            self.scores[hotkey_address] = 0.0
+                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=None, repo_name=hf_repo)
+                            continue
 
 
                     accuracy = self.evaluate_individual(gene[0], datasets)[0]
@@ -156,7 +171,7 @@ class BaseValidator(ABC):
                         final_score = accuracy_score * time_penalty
                         logging.info(f"Penalty applied. Original score: {accuracy_score:.4f}, Final score: {final_score:.4f}")
 
-                    self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=gene[0])
+                    self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=gene[0], repo_name=hf_repo)
 
                     self.scores[hotkey_address] = final_score
                     logging.info(f"Accuracy: {accuracy:.4f}")
