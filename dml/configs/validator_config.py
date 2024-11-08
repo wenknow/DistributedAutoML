@@ -19,6 +19,7 @@ class ValidatorConfig:
     time_penalty_max_time = 7200  #1week
     max_gene_size = 1024*20
     seed = 42
+    training_iterations = 1000
     validation_iterations = 1000
 
     

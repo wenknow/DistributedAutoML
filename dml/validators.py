@@ -355,7 +355,7 @@ class LossValidator(BaseValidator):
         for idx, (inputs, targets) in enumerate(train_loader):
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
-            if idx == 2:
+            if idx == self.config.Validator.training_iterations:
                 break
             optimizer.zero_grad()
             outputs = model(inputs)
