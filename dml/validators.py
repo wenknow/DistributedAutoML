@@ -123,7 +123,7 @@ class BaseValidator(ABC):
             logging.info("This validator is no longer registered on the chain.")
             return
 
-        datasets = load_datasets(self.config.Validator.dataset_names)
+        datasets = load_datasets(self.config.Validator.dataset_names, batch_size=256)
         total_scores = 0.0
         best_gene = self.find_best_gene()
         current_time = time.time()
@@ -391,7 +391,7 @@ class LossValidator(BaseValidator):
                         correct += predicted.eq(targets).sum().item()
             return correct / total
         except Exception as e:
-            logging.error("EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
+            logging.error(f"EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
             return 0.0
 
     def create_baseline_model(self):
