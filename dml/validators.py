@@ -96,13 +96,39 @@ class BaseValidator(ABC):
         pass
 
     def evaluate_individual(self, individual, datasets):
-        fitness = 0.0
+        accuracies = []
         for dataset in datasets:
             model = self.create_model(individual, dataset.name)
             model[0].to(self.config.device)
-            fitness += self.evaluate(model, (dataset.train_loader, dataset.val_loader) ) * dataset.weight
+            accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
+            accuracies.append(accuracy)
             del model
-        return fitness,
+        
+        return torch.tensor(accuracies, device=self.config.device)
+
+    def compute_ranks(self, scores_dict):
+        """
+        Convert raw accuracy scores to ranks for each dataset.
+        Lower rank is better (1 = best).
+        """
+        hotkeys = list(scores_dict.keys())
+        # Convert dict to tensor matrix [n_miners x n_datasets]
+        accuracy_matrix = torch.stack([scores_dict[h] for h in hotkeys])
+        
+        # Get ranks for each dataset (column)
+        # -accuracy_matrix because we want highest accuracy to get rank 1
+        ranks = torch.zeros_like(accuracy_matrix)
+        for j in range(accuracy_matrix.size(1)):  # for each dataset
+            # argsort of -accuracies gives rank order (highest accuracy = rank 1)
+            # add 1 because ranks should start at 1
+            ranks[:, j] = torch.argsort(torch.argsort(-accuracy_matrix[:, j])) + 1
+        
+        # Average rank across datasets for each miner
+        avg_ranks = ranks.float().mean(dim=1)
+        
+        # Create dict mapping hotkeys to average ranks
+        rank_dict = {hotkey: rank.item() for hotkey, rank in zip(hotkeys, avg_ranks)}
+        return rank_dict, ranks
 
     def create_baseline_model(self):
         return BaselineNN(input_size=28*28, hidden_size=128, output_size=10)
@@ -115,6 +141,7 @@ class BaseValidator(ABC):
 
     def validate_and_score(self):
         self.scores = {}
+        accuracy_scores = {}  # Store raw accuracies per miner
         set_seed(self.seed)
 
         logging.info("Receiving genes from chain")
@@ -146,8 +173,6 @@ class BaseValidator(ABC):
                             
                             self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"] = created_at
                             copier_hotkey = self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] 
-                            
-                            
                             
                             self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] = hotkey_address
                             #But what about the prior assigned scores
@@ -181,23 +206,25 @@ class BaseValidator(ABC):
                             continue
 
 
-                    accuracy = self.evaluate_individual(gene[0], datasets)[0]
-                    accuracy_score = accuracy#max(0, accuracy - self.base_accuracy)
-
-
-                    if best_gene is None or accuracy_score > best_gene['performance']:
-                        final_score = accuracy_score
-                        logging.info("No penalty applied.")
-                    else:
-                        time_penalty = self.calculate_time_penalty(current_time, best_gene['timestamp'])
-                        final_score = accuracy_score * time_penalty
-                        logging.info(f"Penalty applied. Original score: {accuracy_score:.4f}, Final score: {final_score:.4f}")
-
+                    accuracy_score = self.evaluate_individual(gene[0], datasets)[0]
+                    #accuracy_score = accuracy#max(0, accuracy - self.base_accuracy)
+                    accuracy_scores[hotkey_address] = accuracy_score
                     self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=gene[0], repo_name=hf_repo, func=self.toolbox.compile(expr=gene[0]))
 
-                    self.scores[hotkey_address] = final_score
-                    logging.info(f"Accuracy: {accuracy:.4f}")
-                    logging.info(f"Accuracy Score: {accuracy_score:.4f}")
+                    
+                    # if best_gene is None or accuracy_score > best_gene['performance']:
+                    #     final_score = accuracy_score
+                    #     logging.info("No penalty applied.")
+                    # else:
+                    #     time_penalty = self.calculate_time_penalty(current_time, best_gene['timestamp'])
+                    #     final_score = accuracy_score * time_penalty
+                    #     logging.info(f"Penalty applied. Original score: {accuracy_score:.4f}, Final score: {final_score:.4f}")
+
+                    
+
+                    # self.scores[hotkey_address] = final_score
+                    # logging.info(f"Accuracy: {accuracy:.4f}")
+                    # logging.info(f"Accuracy Score: {accuracy_score:.4f}")
                     
                 else:
                     logging.info(f"No gene received from: {hotkey_address}")
@@ -214,43 +241,40 @@ class BaseValidator(ABC):
                     logging.info(f"No record found for: {hotkey_address}")
 
 
-        top_k = self.config.Validator.top_k
-        top_k_weights = self.config.Validator.top_k_weight
-        min_score = self.config.Validator.min_score
+        if accuracy_scores:
+            top_k = self.config.Validator.top_k
+            top_k_weights = self.config.Validator.top_k_weight
+            avg_ranks, detailed_ranks = self.compute_ranks(accuracy_scores)
+            
+            # Sort hotkeys by average rank (ascending since lower rank is better)
+            sorted_hotkeys = sorted(avg_ranks.keys(), key=lambda h: avg_ranks[h])
+            
+            # Initialize scores dict
+            self.scores = {h: 0.0 for h in self.bittensor_network.metagraph.hotkeys}
+            
+            # Assign top-k weights to best performing miners
+            for i, hotkey in enumerate(sorted_hotkeys[:top_k]):
+                if i < len(top_k_weights):  # Make sure we have enough weights
+                    self.scores[hotkey] = top_k_weights[i]
+                
+            # Log detailed performance
+            for hotkey in accuracy_scores:
+                logging.info(f"Miner {hotkey}:")
+                logging.info(f"  Raw accuracies: {accuracy_scores[hotkey]}")
+                logging.info(f"  Ranks per dataset: {detailed_ranks[list(accuracy_scores.keys()).index(hotkey)]}")
+                logging.info(f"  Average rank: {avg_ranks[hotkey]:.2f}")
+                logging.info(f"  Final score: {self.scores[hotkey]:.4f}")
+
 
         # Define fixed weights for top-k miners
 
         score_hotkey_pairs = [(score, hotkey) for hotkey, score in self.scores.items() if score > 0]
 
-        # Handle edge cases
-        if not score_hotkey_pairs:
-            # All scores are 0
-            equal_weight = 1.0 / len(self.bittensor_network.metagraph.hotkeys)
-            self.normalized_scores = {hotkey: equal_weight for hotkey in self.bittensor_network.metagraph.hotkeys}
-        else:
-            if top_k <= len(score_hotkey_pairs):
-                top_k_scores = heapq.nlargest(top_k, score_hotkey_pairs)
-                active_weights = top_k_weights[:len(top_k_scores)]
-            else:
-                top_k_scores = heapq.nlargest(len(score_hotkey_pairs), score_hotkey_pairs)
-                active_weights = constrained_decay(len(score_hotkey_pairs), 5.0)#[1.0 / len(score_hotkey_pairs)] * len(score_hotkey_pairs)
-            
-            remaining_weight = 1.0 - sum(active_weights)
-            weight_per_remaining = remaining_weight / (len(self.bittensor_network.metagraph.hotkeys) - len(top_k_scores))
-                
-            for i, (_, hotkey) in enumerate(top_k_scores):
-                self.normalized_scores[hotkey] = active_weights[i]
-            
-            for hotkey in self.bittensor_network.metagraph.hotkeys:
-                if hotkey not in self.normalized_scores:
-                    self.normalized_scores[hotkey] = weight_per_remaining
-
         logging.info(f"Pre-normalization scores: {self.scores}")
         logging.info(f"Normalized scores: {self.normalized_scores}")
-                
 
         if self.bittensor_network.should_set_weights():
-            self.bittensor_network.set_weights(self.normalized_scores)
+            self.bittensor_network.set_weights(self.scores)
             logging.info("Weights Setting attempted !")
 
     def check_registration(self):
