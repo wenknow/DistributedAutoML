@@ -204,7 +204,7 @@ class BaseValidator(ABC):
                                 accuracy_scores[hotkey_address] = final_score
 
                             accuracy_scores[copier_hotkey] = torch.zeros_like(final_score)
-                            self.gene_record_manager.records[copier_hotkey]['performance'] = 0.0 
+                            self.gene_record_manager.records[copier_hotkey]['performance'] = torch.zeros_like(final_score)
                             logging.warning(f"Copying detected. Setting score of {copier_hotkey} to {0.0}")
                             self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=None, repo_name=hf_repo, func=None)
 
