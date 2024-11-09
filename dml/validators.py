@@ -114,6 +114,7 @@ class BaseValidator(ABC):
         logging.info(f"Baseline model accuracy: {self.base_accuracy:.4f}")
 
     def validate_and_score(self):
+        self.scores = {}
         set_seed(self.seed)
 
         logging.info("Receiving genes from chain")
@@ -123,7 +124,7 @@ class BaseValidator(ABC):
             logging.info("This validator is no longer registered on the chain.")
             return
 
-        datasets = load_datasets(self.config.Validator.dataset_names, batch_size=256)
+        datasets = load_datasets(self.config.Validator.dataset_names, batch_size=32)
         total_scores = 0.0
         best_gene = self.find_best_gene()
         current_time = time.time()
@@ -138,33 +139,45 @@ class BaseValidator(ABC):
                 if gene is not None:
                     logging.info(f"Receiving gene from: {hotkey_address} ---> {hf_repo}")
                     
-                    if self.gene_record_manager.is_expression_duplicate(gene[0]):
-                        expr_hash = self.gene_record_manager._compute_expression_hash(gene[0])
-                        created_at = list_repo_commits(repo_id=hf_repo)[0].created_at.timestamp
+                    if self.gene_record_manager.is_expression_duplicate(self.toolbox.compile(expr=gene[0])):
+                        expr_hash = self.gene_record_manager._compute_function_signature(self.toolbox.compile(expr=gene[0]))
+                        created_at = list_repo_commits(repo_id=hf_repo)[0].created_at.timestamp()
                         if created_at < self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"]:
                             
                             self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"] = created_at
                             copier_hotkey = self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] 
-                            logging.warning(f"Copying detected. Reclaiming copied score from {copier_hotkey} to {hotkey_address}")
+                            
                             
                             
                             self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] = hotkey_address
                             #But what about the prior assigned scores
                             accuracy_score = self.gene_record_manager.expression_registry[expr_hash]["score"]
-                            if accuracy_score > best_gene['performance']:
+                            if best_gene is None or accuracy_score > best_gene['performance']:
                                 final_score = accuracy_score
                             else:
                                 time_penalty = self.calculate_time_penalty(current_time, best_gene['timestamp'])
                                 final_score = accuracy_score * time_penalty
+                            try:
+                                # Not repeating since assuming this only works for the case of previous zeroing/assignment of hotkey stolen from
+                                # if the hotkey stolen from shows up later it will be assesed by its own merit.
+                                # 
+                                # if final_score > self.scores[hotkey_address]:
+                                self.scores[hotkey_address] = final_score
+                                logging.warning(f"Copying detected. Reclaiming copied score from {copier_hotkey} to {hotkey_address}")                                
+                            
+                            except KeyError:
+                                    self.scores[hotkey_address] = final_score
 
-                            self.scores[hotkey_address] = final_score
                             self.scores[copier_hotkey] = 0.0
-                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=None, repo_name=hf_repo)
+                            self.gene_record_manager.records[copier_hotkey]['performance'] = 0.0 
+                            logging.warning(f"Copying detected. Setting score of {copier_hotkey} to {0.0}")
+                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=None, repo_name=hf_repo, func=None)
+
                             continue
                         else:
                             logging.warning(f"Duplicate expression detected from {hotkey_address}. Assigning zero score.")
                             self.scores[hotkey_address] = 0.0
-                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, 0.0, expr=None, repo_name=hf_repo)
+                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, 0.0, expr=None, repo_name=hf_repo, func=None)
                             continue
 
 
@@ -180,7 +193,7 @@ class BaseValidator(ABC):
                         final_score = accuracy_score * time_penalty
                         logging.info(f"Penalty applied. Original score: {accuracy_score:.4f}, Final score: {final_score:.4f}")
 
-                    self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=gene[0], repo_name=hf_repo)
+                    self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=gene[0], repo_name=hf_repo, func=self.toolbox.compile(expr=gene[0]))
 
                     self.scores[hotkey_address] = final_score
                     logging.info(f"Accuracy: {accuracy:.4f}")
