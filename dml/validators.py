@@ -201,9 +201,9 @@ class BaseValidator(ABC):
                                 logging.warning(f"Copying detected. Reclaiming copied score from {copier_hotkey} to {hotkey_address}")                                
                             
                             except KeyError:
-                                    accuracy_scores[hotkey_address] = final_score
+                                accuracy_scores[hotkey_address] = final_score
 
-                            accuracy_scores[copier_hotkey] = 0.0
+                            accuracy_scores[copier_hotkey] = torch.zeros_like(final_score)
                             self.gene_record_manager.records[copier_hotkey]['performance'] = 0.0 
                             logging.warning(f"Copying detected. Setting score of {copier_hotkey} to {0.0}")
                             self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=None, repo_name=hf_repo, func=None)
@@ -245,7 +245,7 @@ class BaseValidator(ABC):
                 if existing_record:
                     #time_penalty = self.calculate_time_penalty(existing_record['timestamp'], best_gene['timestamp'])
                     accuracy_scores[hotkey_address] = torch.tensor(existing_record['performance'], device=self.config.device)
-                    logging.info(f"No new gene from: {hotkey_address}. Using existing score: {existing_record['performance']:.4f}")
+                    logging.info(f"No new gene from: {hotkey_address}.")
                 else:
                     accuracy_scores[hotkey_address] = 0.0
                     logging.info(f"No record found for: {hotkey_address}")
