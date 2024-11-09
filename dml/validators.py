@@ -121,7 +121,14 @@ class BaseValidator(ABC):
         # Get ranks for each dataset (column)
         # -accuracy_matrix because we want highest accuracy to get rank 1
         ranks = torch.zeros_like(accuracy_matrix)
-        for j in range(accuracy_matrix.size(1)):  # for each dataset
+        if len(accuracy_matrix.shape) == 1:
+            datasets_count = 1
+        elif len(accuracy_matrix.shape) == 2:
+            datasets_count = accuracy_matrix.size(-1)
+        else:
+            raise ValueError
+         
+        for j in range(datasets_count):  # for each dataset
             # argsort of -accuracies gives rank order (highest accuracy = rank 1)
             # add 1 because ranks should start at 1
             ranks[:, j] = torch.argsort(torch.argsort(-accuracy_matrix[:, j])) + 1
@@ -179,7 +186,7 @@ class BaseValidator(ABC):
                             
                             self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] = hotkey_address
                             #But what about the prior assigned scores
-                            accuracy_score = torch.tensor(self.gene_record_manager.expression_registry[expr_hash]["score"])
+                            accuracy_score = torch.tensor(self.gene_record_manager.expression_registry[expr_hash]["score"], device=self.config.device)
                             #if best_gene is None or accuracy_score > best_gene['performance']:
                             final_score = accuracy_score
                             #else:
@@ -209,7 +216,7 @@ class BaseValidator(ABC):
                             continue
 
 
-                    accuracy_score = self.evaluate_individual(gene[0], datasets)[0]
+                    accuracy_score = self.evaluate_individual(gene[0], datasets)
                     #accuracy_score = accuracy#max(0, accuracy - self.base_accuracy)
                     accuracy_scores[hotkey_address] = accuracy_score
                     self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=gene[0], repo_name=hf_repo, func=self.toolbox.compile(expr=gene[0]))
@@ -237,7 +244,7 @@ class BaseValidator(ABC):
                 existing_record = self.gene_record_manager.get_record(hotkey_address)
                 if existing_record:
                     #time_penalty = self.calculate_time_penalty(existing_record['timestamp'], best_gene['timestamp'])
-                    accuracy_scores[hotkey_address] = torch.tensor(existing_record['performance'])
+                    accuracy_scores[hotkey_address] = torch.tensor(existing_record['performance'], device=self.config.device)
                     logging.info(f"No new gene from: {hotkey_address}. Using existing score: {existing_record['performance']:.4f}")
                 else:
                     accuracy_scores[hotkey_address] = 0.0
@@ -247,6 +254,7 @@ class BaseValidator(ABC):
         if accuracy_scores:
             top_k = self.config.Validator.top_k
             top_k_weights = self.config.Validator.top_k_weight
+            logging.info(f"Accuracy Scores: {accuracy_scores}")
             avg_ranks, detailed_ranks = self.compute_ranks(accuracy_scores)
             
             # Sort hotkeys by average rank (ascending since lower rank is better)
