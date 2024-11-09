@@ -139,11 +139,19 @@ class GeneRecordManager:
                   repo_name: str = None, 
                   func = None):
         """Add a new record for a miner's gene submission"""
+
+        try:
+            performance = performance.tolist()
+        except:
+            pass
+        
         self.records[miner_hotkey] = {
             'gene_hash': gene_hash,
             'timestamp': timestamp,
             'performance': performance
         }
+
+        
         
         if expr is not None:
             func_signature = self._compute_function_signature(func)
