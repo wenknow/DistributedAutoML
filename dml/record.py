@@ -85,7 +85,10 @@ class GeneRecordManager:
 
     def _save_expression_registry(self):
         with open(self.expression_registry_path, 'w') as f:
-            json.dump(self.expression_registry, f, indent=2)
+            try:
+                json.dump(self.expression_registry, f, indent=2)
+            except:
+                breakpoint()
 
     def _compute_expression_hash(self, expr) -> str:
         """Compute a unique hash for any expression"""
@@ -166,8 +169,11 @@ class GeneRecordManager:
                     }
                     self._save_expression_registry()
             #if func_signature is None?
-                
-        self._save_records()
+        
+        try:
+            self._save_records()
+        except:
+            breakpoint()
 
     def is_expression_duplicate(self, expr) -> bool:
         """Check if an expression has been used before by any miner"""

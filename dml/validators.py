@@ -116,10 +116,14 @@ class BaseValidator(ABC):
 
         hotkeys = list(scores_dict.keys())
         # Convert dict to tensor matrix [n_miners x n_datasets]
-        accuracy_matrix = torch.stack([scores_dict[h] for h in hotkeys])
+        try:
+            accuracy_matrix = torch.stack([scores_dict[h] for h in hotkeys])
+        except:
+            breakpoint()
         
         # Get ranks for each dataset (column)
         # -accuracy_matrix because we want highest accuracy to get rank 1
+
         ranks = torch.zeros_like(accuracy_matrix)
         if len(accuracy_matrix.shape) == 1:
             datasets_count = 1
@@ -204,15 +208,15 @@ class BaseValidator(ABC):
                                 accuracy_scores[hotkey_address] = final_score
 
                             accuracy_scores[copier_hotkey] = torch.zeros_like(final_score)
-                            self.gene_record_manager.records[copier_hotkey]['performance'] = torch.zeros_like(final_score)
+                            self.gene_record_manager.records[copier_hotkey]['performance'] = torch.zeros_like(final_score).tolist()
                             logging.warning(f"Copying detected. Setting score of {copier_hotkey} to {0.0}")
-                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=None, repo_name=hf_repo, func=None)
+                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, torch.zeros_like(final_score, device=self.config.device), expr=None, repo_name=hf_repo, func=None)
 
                             continue
                         else:
                             logging.warning(f"Duplicate expression detected from {hotkey_address}. Assigning zero score.")
-                            accuracy_scores[hotkey_address] = 0.0
-                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, 0.0, expr=None, repo_name=hf_repo, func=None)
+                            accuracy_scores[hotkey_address] = torch.zeros((len(self.config.Validator.dataset_names),), device=self.config.device)
+                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, torch.zeros((len(self.config.Validator.dataset_names),), device=self.config.device), expr=None, repo_name=hf_repo, func=None)
                             continue
 
 
@@ -268,25 +272,32 @@ class BaseValidator(ABC):
                 if i < len(top_k_weights):  # Make sure we have enough weights
                     self.scores[hotkey] = top_k_weights[i]
                 
+            total_weight = sum(self.scores.values())
+            if total_weight > 0:
+                self.scores = {k: v/total_weight for k, v in self.scores.items()}
+                
             # Log detailed performance
             for hotkey in accuracy_scores:
-                logging.info(f"Miner {hotkey}:")
-                logging.info(f"  Raw accuracies: {accuracy_scores[hotkey]}")
-                logging.info(f"  Ranks per dataset: {detailed_ranks[list(accuracy_scores.keys()).index(hotkey)]}")
-                logging.info(f"  Average rank: {avg_ranks[hotkey]:.2f}")
-                logging.info(f"  Final score: {self.scores[hotkey]:.4f}")
+                try:
+                    logging.info(f"Miner {hotkey}:")
+                    logging.info(f"  Final score: {self.scores[hotkey]:.4f}")
+                    logging.info(f"  Raw accuracies: {accuracy_scores[hotkey]}")
+                    logging.info(f"  Average rank: {avg_ranks[hotkey]:.2f}")
+                except:
+                    pass
+                    
 
 
-        # Define fixed weights for top-k miners
+            # Define fixed weights for top-k miners
 
-        #score_hotkey_pairs = [(score, hotkey) for hotkey, score in self.scores.items() if score > 0]
+            #score_hotkey_pairs = [(score, hotkey) for hotkey, score in self.scores.items() if score > 0]
 
-        logging.info(f"Pre-normalization scores: {self.scores}")
-        logging.info(f"Normalized scores: {self.normalized_scores}")
+            logging.info(f"Pre-normalization scores: {self.scores}")
+            logging.info(f"Normalized scores: {self.normalized_scores}")
 
-        if self.bittensor_network.should_set_weights():
-            self.bittensor_network.set_weights(self.scores)
-            logging.info("Weights Setting attempted !")
+            if self.bittensor_network.should_set_weights():
+                self.bittensor_network.set_weights(self.scores)
+                logging.info("Weights Setting attempted !")
 
     def check_registration(self):
         try:
