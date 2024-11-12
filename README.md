@@ -76,8 +76,7 @@ You have two main approaches as a miner:
 We welcome validators and are committed to supporting you. We can assist with setup, automation, cost-reduction, and other measures to reduce friction. Please note: Do not copy weights.
 
 #### Requirements
-    4-8 core CPU
-    16 GB RAM
+    12 GB VRAM (min)
     200 GB storage
     No GPU required at this stage
 
