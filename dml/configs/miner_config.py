@@ -19,5 +19,5 @@ class MinerConfig:
     seed = int(time.time())
     tournament_size = 2    
     training_iterations = 3
-    dataset_names = ["shakespeare"]
+    dataset_names = ["cifar10", "shakespeare"]
     
