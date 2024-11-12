@@ -204,7 +204,7 @@ class BaseMiner(ABC, PushMixin):
 
     def mine(self):
         self.measure_baseline()
-        datasets = load_datasets(self.config.Miner.dataset_names)
+        datasets = load_datasets(self.config.Miner.dataset_names, batch_size=self.config.Miner.batch_size)
         
         checkpoint_file = os.path.join(LOCAL_STORAGE_PATH, 'evolution_checkpoint.pkl')
         
@@ -752,7 +752,7 @@ class LossMiner(BaseMiner):
         for idx, (inputs, targets) in enumerate(train_loader):
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
-            if idx == 2:
+            if idx == self.config.Miner.training_iterations:
                 break
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -771,7 +771,7 @@ class LossMiner(BaseMiner):
             for idx, (inputs, targets) in enumerate(val_loader):
                 inputs = inputs.to(self.device)
                 targets = targets.to(self.device)
-                if idx > 10:
+                if idx > self.config.Miner.evaluation_iterations:
                     break
                 outputs = model(inputs)
                 if len(outputs.shape) == 3:

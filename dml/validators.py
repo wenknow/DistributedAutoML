@@ -112,14 +112,27 @@ class BaseValidator(ABC):
         Lower rank is better (1 = best).
         """
 
-        scores_dict = {k: v for k, v in scores_dict.items() if not (isinstance(v, (int, float)) and v == 0.0)}
+        filtered_scores_dict = {}
 
-        hotkeys = list(scores_dict.keys())
+        # Iterate over each key-value pair in the original dictionary
+        for k, v in scores_dict.items():
+            if isinstance(v, torch.Tensor):
+                # For tensors, check if the sum is zero
+                is_zero = torch.sum(v) == 0.0
+            else:
+                # For non-tensors, check if the value is exactly 0.0
+                is_zero = (v == 0.0) if isinstance(v, (int, float)) else False
+            
+            # Only add the item to the new dictionary if it’s not zero
+            if not is_zero:
+                filtered_scores_dict[k] = v
+
+        hotkeys = list(filtered_scores_dict.keys())
         # Convert dict to tensor matrix [n_miners x n_datasets]
         try:
-            accuracy_matrix = torch.stack([scores_dict[h] for h in hotkeys])
+            accuracy_matrix = torch.stack([filtered_scores_dict[h] for h in hotkeys])
         except:
-            breakpoint()
+            raise ValueError(f"Incorrect values passed: {accuracy_matrix}")
         
         # Get ranks for each dataset (column)
         # -accuracy_matrix because we want highest accuracy to get rank 1
@@ -210,7 +223,7 @@ class BaseValidator(ABC):
                             accuracy_scores[copier_hotkey] = torch.zeros_like(final_score)
                             self.gene_record_manager.records[copier_hotkey]['performance'] = torch.zeros_like(final_score).tolist()
                             logging.warning(f"Copying detected. Setting score of {copier_hotkey} to {0.0}")
-                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, torch.zeros_like(final_score, device=self.config.device), expr=None, repo_name=hf_repo, func=None)
+                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, final_score.to(self.config.device), expr=None, repo_name=hf_repo, func=None)
 
                             continue
                         else:
