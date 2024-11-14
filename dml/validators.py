@@ -193,9 +193,12 @@ class BaseValidator(ABC):
                 if gene is not None:
                     logging.info(f"Receiving gene from: {hotkey_address} ---> {hf_repo}")
                     
+                    expr_hash = self.gene_record_manager._compute_function_signature(self.toolbox.compile(expr=gene[0]))
+                    created_at = self.api.repo_info_with_timeout(repo_id=hf_repo).lastModified.timestamp()
+                    logging.info(f"Created timestamp: {created_at}")
+
                     if self.gene_record_manager.is_expression_duplicate(self.toolbox.compile(expr=gene[0])):
-                        expr_hash = self.gene_record_manager._compute_function_signature(self.toolbox.compile(expr=gene[0]))
-                        created_at = list_repo_commits(repo_id=hf_repo)[0].created_at.timestamp()
+                        
                         if created_at < self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"]:
                             
                             self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"] = created_at
@@ -223,35 +226,22 @@ class BaseValidator(ABC):
                             accuracy_scores[copier_hotkey] = torch.zeros_like(final_score)
                             self.gene_record_manager.records[copier_hotkey]['performance'] = torch.zeros_like(final_score).tolist()
                             logging.warning(f"Copying detected. Setting score of {copier_hotkey} to {0.0}")
-                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, final_score.to(self.config.device), expr=None, repo_name=hf_repo, func=None)
+                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, created_at, final_score.to(self.config.device), expr=None, repo_name=hf_repo, func=None)
 
                             continue
                         else:
                             logging.warning(f"Duplicate expression detected from {hotkey_address}. Assigning zero score.")
                             accuracy_scores[hotkey_address] = torch.zeros((len(self.config.Validator.dataset_names),), device=self.config.device)
-                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, torch.zeros((len(self.config.Validator.dataset_names),), device=self.config.device), expr=None, repo_name=hf_repo, func=None)
+                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, created_at, torch.zeros((len(self.config.Validator.dataset_names),), device=self.config.device), expr=None, repo_name=hf_repo, func=None)
                             continue
 
-
-                    accuracy_score = self.evaluate_individual(gene[0], datasets)
-                    #accuracy_score = accuracy#max(0, accuracy - self.base_accuracy)
-                    accuracy_scores[hotkey_address] = accuracy_score
-                    self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, current_time, accuracy_score, expr=gene[0], repo_name=hf_repo, func=self.toolbox.compile(expr=gene[0]))
-
-                    
-                    # if best_gene is None or accuracy_score > best_gene['performance']:
-                    #     final_score = accuracy_score
-                    #     logging.info("No penalty applied.")
-                    # else:
-                    #     time_penalty = self.calculate_time_penalty(current_time, best_gene['timestamp'])
-                    #     final_score = accuracy_score * time_penalty
-                    #     logging.info(f"Penalty applied. Original score: {accuracy_score:.4f}, Final score: {final_score:.4f}")
+                    else:
+                        accuracy_score = self.evaluate_individual(gene[0], datasets)
+                        #accuracy_score = accuracy#max(0, accuracy - self.base_accuracy)
+                        accuracy_scores[hotkey_address] = accuracy_score
+                        self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, created_at, accuracy_score, expr=gene[0], repo_name=hf_repo, func=self.toolbox.compile(expr=gene[0]))
 
                     
-
-                    # self.scores[hotkey_address] = final_score
-                    # logging.info(f"Accuracy: {accuracy:.4f}")
-                    # logging.info(f"Accuracy Score: {accuracy_score:.4f}")
                     
                 else:
                     logging.info(f"No gene received from: {hotkey_address}")

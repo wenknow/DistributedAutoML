@@ -22,3 +22,9 @@ class TimeoutHfApi(HfApi):
         """Wrapper for list_repo_files with timeout"""
         return super().hf_hub_download(repo_id=repo_id, filename=filename, **kwargs)
         
+    @timeout_decorator.timeout(30, timeout_exception=Timeout)
+    def repo_info_with_timeout(self, repo_id, **kwargs):
+        """Wrapper for list_repo_files with timeout"""
+        return super().repo_info(repo_id=repo_id, **kwargs)
+        
+    
