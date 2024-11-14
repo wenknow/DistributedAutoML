@@ -195,6 +195,8 @@ class BaseValidator(ABC):
                     
                     expr_hash = self.gene_record_manager._compute_function_signature(self.toolbox.compile(expr=gene[0]))
                     created_at = self.api.repo_info_with_timeout(repo_id=hf_repo).lastModified.timestamp()
+                    logging.info(f"Created timestamp: {created_at}")
+
                     if self.gene_record_manager.is_expression_duplicate(self.toolbox.compile(expr=gene[0])):
                         
                         if created_at < self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"]:
