@@ -160,10 +160,9 @@ class GeneRecordManager:
             func_signature = self._compute_function_signature(func)
             if func_signature:
                 if func_signature not in self.expression_registry:
-                    created_at = list_repo_commits(repo_id=repo_name)[0].created_at.timestamp()
 
                     self.expression_registry[func_signature] = {
-                        "earliest_timestamp": created_at,
+                        "earliest_timestamp": timestamp,
                         "earliest_hotkey": miner_hotkey,
                         "score": performance
                     }
