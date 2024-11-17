@@ -17,17 +17,20 @@ import multiprocessing as mp
 from multiprocessing import Queue, Process, Pool, Value
 import time 
 import queue
+import json 
 
 from deap import algorithms, base, creator, tools, gp
 from functools import partial
 
+from dml.record import GeneRecordManager
+from dml.chain.chain_manager import ChainManager
 from dml.data import load_datasets
 from dml.deap_individual import FitnessMax, Individual
 from dml.models import BaselineNN, EvolvableNN, get_model_for_dataset
 from dml.ops import create_pset
 from dml.gene_io import save_individual_to_json, load_individual_from_json, safe_eval
 from dml.gp_fix import SafePrimitiveTree
-from dml.destinations import PushMixin, PoolPushDestination, HuggingFacePushDestination
+from dml.destinations import PushMixin, PoolPushDestination, HuggingFacePushDestination, HFChainPushDestination
 from dml.utils import set_seed, calculate_tree_depth
 
 
@@ -44,8 +47,100 @@ class BaseMiner(ABC, PushMixin):
         self.metrics_file = config.metrics_file
         self.metrics_data = []
         self.push_destinations = [] 
+        self.gene_record_manager = GeneRecordManager()
+
+        # Push tracking
+        self.last_push_attempt = 0  # Timestamp of last push attempt
+        self.push_cooldown = 30 * 60  # 30 minutes in seconds
+        self.last_push_success = False
+        self.best_solution = {
+            'individual': None,
+            'fitness': float('-inf'),
+            'pushed': False,
+            'push_attempts': 0,
+            'max_push_attempts': 3  # Maximum number of push attempts
+        }
+
+        # Initialize record keeping
+        self.push_record_file = os.path.join(LOCAL_STORAGE_PATH, 'push_record.json')
+        self._load_push_record()
+        
         # DEAP utils
         self.initialize_deap()
+
+    def _load_push_record(self):
+        """Load the push record from disk if it exists"""
+        try:
+            if os.path.exists(self.push_record_file):
+                with open(self.push_record_file, 'r') as f:
+                    record = json.load(f)
+                    self.last_push_attempt = record.get('last_push_attempt', 0)
+                    self.last_push_success = record.get('last_push_success', False)
+                    # Best solution data will be reconstructed during mining
+        except Exception as e:
+            logging.warning(f"Failed to load push record: {e}")
+
+    def _save_push_record(self):
+        """Save the current push record to disk"""
+        try:
+            record = {
+                'last_push_attempt': self.last_push_attempt,
+                'last_push_success': self.last_push_success,
+                'best_fitness': float(self.best_solution['fitness']) if self.best_solution['individual'] else float('-inf')
+            }
+            with open(self.push_record_file, 'w') as f:
+                json.dump(record, f)
+        except Exception as e:
+            logging.error(f"Failed to save push record: {e}")
+
+    def should_attempt_push(self) -> bool:
+        """Check if enough time has passed and we should attempt a push"""
+        current_time = time.time()
+        time_since_last_push = current_time - self.last_push_attempt
+        
+        # If last push failed and we haven't exceeded max attempts
+        if not self.last_push_success and self.best_solution['push_attempts'] < self.best_solution['max_push_attempts']:
+            return True
+        
+        # If cooldown period has passed
+        return time_since_last_push >= self.push_cooldown
+
+    def attempt_push(self, individual, generation):
+        """Attempt to push the solution with tracking"""
+        try:
+            current_time = time.time()
+            commit_message = f"{generation}_{individual.fitness.values[0]:.4f}"
+            
+            # Attempt the push
+            super().push_to_remote(individual, commit_message)
+            
+            # Update tracking on success
+            self.last_push_attempt = current_time
+            self.last_push_success = True
+            self.best_solution['pushed'] = True
+            self.best_solution['push_attempts'] = 0  # Reset attempts counter
+            logging.info(f"Successfully pushed solution at generation {generation}")
+            
+        except Exception as e:
+            # Update tracking on failure
+            self.last_push_success = False
+            self.best_solution['push_attempts'] += 1
+            logging.error(f"Push attempt failed: {e}")
+            
+        finally:
+            self._save_push_record()
+
+    def update_best_solution(self, individual, generation):
+        """Update the best solution if new one is better"""
+        current_fitness = individual.fitness.values[0]
+        if current_fitness > self.best_solution['fitness']:
+            self.best_solution['individual'] = deepcopy(individual)
+            self.best_solution['fitness'] = current_fitness
+            self.best_solution['pushed'] = False
+            self.best_solution['push_attempts'] = 0
+            logging.info(f"New best solution found at generation {generation} with fitness {current_fitness:.4f}")
+            return True
+        return False
 
         
     def initialize_deap(self):
@@ -210,15 +305,14 @@ class BaseMiner(ABC, PushMixin):
         
         # Check if checkpoint exists
         if os.path.exists(checkpoint_file):
-            # Load checkpoint
-            logging.info("Loading checkpoint...")
             population, hof, best_individual_all_time, start_generation = self.load_checkpoint(checkpoint_file)
+            if best_individual_all_time is not None:
+                self.best_solution['individual'] = best_individual_all_time
+                self.best_solution['fitness'] = best_individual_all_time.fitness.values[0]
             logging.info(f"Resuming from generation {start_generation}")
         else:
-            # No checkpoint, start fresh
             population = self.toolbox.population(n=self.config.Miner.population_size)
             hof = tools.HallOfFame(1)
-            best_individual_all_time = None
             start_generation = 0
             logging.info("Starting evolution from scratch")
         
@@ -233,13 +327,14 @@ class BaseMiner(ABC, PushMixin):
                     ind.fitness.values = self.toolbox.evaluate(ind, datasets)
                 logging.debug(f"Gen {generation}, Individual {i}: Fitness = {ind.fitness.values[0]}")
 
-            height = []
-            for ind in population:
-                try:
-                    height.append(ind.height)
-                except:
-                    pass
+            # Update best solution
+            best_in_gen = tools.selBest(population, 1)[0]
+            best_updated = self.update_best_solution(best_in_gen, generation)
             
+            # Check if we should attempt a push
+            if (best_updated or not self.last_push_success) and self.should_attempt_push():
+                self.attempt_push(self.best_solution['individual'], generation)
+
 
             # Select the next generation individuals
             offspring = self.toolbox.select(population, len(population))
@@ -282,65 +377,23 @@ class BaseMiner(ABC, PushMixin):
 
             # Update the population
             population[:] = offspring
-        
-            invalid_ind = [ind for ind in population if not ind.fitness.valid]
-            for i, ind in enumerate(invalid_ind): 
-                ind.fitness.values = self.toolbox.evaluate(ind, datasets)
-                logging.debug(f"Gen {generation}, New Individual {i}: Fitness = {ind.fitness.values[0]}")
-        
+
             # Update the hall of fame with the generated individuals
             hof.update(population)
 
+             # Save checkpoint
+            self.save_checkpoint(
+                population, hof, self.best_solution['individual'], 
+                generation, random.getstate(), torch.get_rng_state(), 
+                np.random.get_state(), checkpoint_file
+            )
+
             height = [ind.height for ind in population if ind.height]
-            
-        
-            # Gather all the fitnesses in one list and print the stats
-            fits = [ind.fitness.values[0] for ind in population if not math.isinf(ind.fitness.values[0])]
-            length = len(fits)
-            if length > 0:
-                mean = np.mean(fits)
-                min_fit = np.min(fits)
-                max_fit = np.max(fits)
-                if length > 1:
-                    std = np.std(fits, ddof=1)  # Use ddof=1 for sample standard deviation
-                else:
-                    std = float('nan')
-            else:
-                mean = min_fit = max_fit = std = float('nan')
-            
-            logging.info(f"Generation {generation}: Valid fits: {len(fits)}/{length}")
-            logging.info(f"Min {min(fits) if fits else float('inf')}")
-            logging.info(f"Max {max(fits) if fits else float('inf')}")
-            logging.info(f"Avg {mean}")
-            logging.info(f"Std {std}")
-        
-            best_individual = tools.selBest(population, 1)[0]
-        
-            if best_individual_all_time is None:
-                best_individual_all_time = best_individual
-            if best_individual.fitness.values[0] > best_individual_all_time.fitness.values[0]:
-                best_individual_all_time = deepcopy(best_individual)
-                logging.info(f"New best gene found. Pushing to {self.config.gene_repo}")
-                self.push_to_remote(best_individual_all_time, f"{generation}_{best_individual_all_time.fitness.values[0]:.4f})")
             
             if generation % self.config.Miner.check_registration_interval == 0:
                 self.config.bittensor_network.sync()
 
-            logging.info(f"Generation {generation}: Best accuracy = {best_individual.fitness.values[0]:.4f}")
-            
-            # Save checkpoint at the end of the generation
-            random_state = random.getstate()
-            torch_rng_state = torch.get_rng_state()
-            numpy_rng_state = np.random.get_state()
-            self.save_checkpoint(population, hof, best_individual_all_time, generation, random_state, torch_rng_state
-                                 , numpy_rng_state, checkpoint_file)
-        
-        # Evolution finished
-        logging.info("Evolution finished")
-        
-        # Remove the checkpoint file if evolution is complete
-        if os.path.exists(checkpoint_file):
-            os.remove(checkpoint_file)
+            logging.info(f"Generation {generation}: Best fitness = {self.best_solution['fitness']:.4f}")
         
         return best_individual_all_time
 
@@ -357,7 +410,15 @@ class BaseMiner(ABC, PushMixin):
 class BaseHuggingFaceMiner(BaseMiner):
     def __init__(self, config):
         super().__init__(config)
-        self.push_destinations.append(HuggingFacePushDestination(config.gene_repo))
+        self.push_destinations.append(
+            HFChainPushDestination(
+                repo_name=config.gene_repo,
+                chain_manager= ChainManager(config.bittensor_network.subtensor, config.Bittensor.netuid, config.bittensor_network.wallet),
+                compute_hash_fn=lambda gene: self.gene_record_manager._compute_function_signature(
+                    self.toolbox.compile(expr=gene)
+                )
+            )
+        )
 
 class BaseMiningPoolMiner(BaseMiner):
     def __init__(self, config):

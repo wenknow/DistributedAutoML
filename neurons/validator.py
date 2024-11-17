@@ -3,7 +3,7 @@ import logging
 
 from dml.validators import ValidatorFactory
 from dml.chain.btt_connector import BittensorNetwork
-from dml.chain.chain_manager import ChainMultiAddressStore
+from dml.chain.chain_manager import ChainManager
 from dml.chain.hf_manager import HFManager
 from dml.configs.config import config
 
@@ -26,8 +26,12 @@ def main(config):
     config.bittensor_network = BittensorNetwork
 
     # Initialize Chain Manager and HF Manager
-    config.chain_manager =  ChainMultiAddressStore(BittensorNetwork.subtensor, bt_config.netuid, BittensorNetwork.wallet)
-    
+    config.chain_manager = ChainManager(
+        subtensor=BittensorNetwork.subtensor,
+        subnet_uid=bt_config.netuid,
+        wallet=BittensorNetwork.wallet
+    )
+
     # Create and start validator
     validator = ValidatorFactory.get_validator(config)
     #validator.measure_baseline()

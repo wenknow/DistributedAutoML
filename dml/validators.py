@@ -70,6 +70,34 @@ class BaseValidator(ABC):
         self.toolbox.register("mutate", gp.mutUniform, expr=self.toolbox.expr_mut, pset=self.pset)
 
 
+    def check_chain_submission(self, hotkey_address, expr_hash):
+        """
+        Check the chain for previous submissions of this hash.
+        Returns (is_original, block_number, original_submitter) tuple.
+        """
+        try:
+            earliest_block = float('inf')
+            original_submitter = None
+            found = False
+
+            # Check all registered miners
+            for hotkey in self.bittensor_network.metagraph.hotkeys:
+                metadata = self.config.chain_manager.retrieve_solution_metadata(hotkey)
+                if metadata and metadata.id and metadata.id.solution_hash == expr_hash:
+                    found = True
+                    if metadata.id.block_number < earliest_block:
+                        earliest_block = metadata.id.block_number
+                        original_submitter = hotkey
+
+            if found:
+                return False, earliest_block, original_submitter
+            return True, None, None
+
+        except Exception as e:
+            logging.error(f"Failed to check chain submission: {str(e)}")
+            return True, None, None  # Assume original if check fails
+
+
     def calculate_time_penalty(self, new_timestamp: float, old_timestamp: float) -> float:
         time_diff = new_timestamp - old_timestamp
         if time_diff <= 0:
@@ -180,13 +208,12 @@ class BaseValidator(ABC):
 
         datasets = load_datasets(self.config.Validator.dataset_names, batch_size=32)
         total_scores = 0.0
-        #best_gene = self.find_best_gene()
         current_time = time.time()
 
         for uid, hotkey_address in enumerate(self.bittensor_network.metagraph.hotkeys):
-
             hf_repo = self.chain_manager.retrieve_hf_repo(hotkey_address)
             remote_gene_hash = self.get_remote_gene_hash(hf_repo)
+            
             if self.gene_record_manager.should_download(hotkey_address, remote_gene_hash):
                 gene = self.receive_gene_from_hf(hf_repo)
 
@@ -194,77 +221,59 @@ class BaseValidator(ABC):
                     logging.info(f"Receiving gene from: {hotkey_address} ---> {hf_repo}")
                     
                     expr_hash = self.gene_record_manager._compute_function_signature(self.toolbox.compile(expr=gene[0]))
-                    created_at = self.api.repo_info_with_timeout(repo_id=hf_repo).lastModified.timestamp()
-                    logging.info(f"Created timestamp: {created_at}")
-
-                    if self.gene_record_manager.is_expression_duplicate(self.toolbox.compile(expr=gene[0])):
-                        
-                        if created_at < self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"]:
-                            
-                            self.gene_record_manager.expression_registry[expr_hash]["earliest_timestamp"] = created_at
-                            copier_hotkey = self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] 
-                            
-                            self.gene_record_manager.expression_registry[expr_hash]["earliest_hotkey"] = hotkey_address
-                            #But what about the prior assigned scores
-                            accuracy_score = torch.tensor(self.gene_record_manager.expression_registry[expr_hash]["score"], device=self.config.device)
-                            #if best_gene is None or accuracy_score > best_gene['performance']:
-                            final_score = accuracy_score
-                            #else:
-                            #    time_penalty = self.calculate_time_penalty(current_time, best_gene['timestamp'])
-                            #    final_score = accuracy_score * time_penalty
-                            try:
-                                # Not repeating since assuming this only works for the case of previous zeroing/assignment of hotkey stolen from
-                                # if the hotkey stolen from shows up later it will be assesed by its own merit.
-                                # 
-                                # if final_score > self.scores[hotkey_address]:
-                                accuracy_scores[hotkey_address] = final_score
-                                logging.warning(f"Copying detected. Reclaiming copied score from {copier_hotkey} to {hotkey_address}")                                
-                            
-                            except KeyError:
-                                accuracy_scores[hotkey_address] = final_score
-
-                            accuracy_scores[copier_hotkey] = torch.zeros_like(final_score)
-                            self.gene_record_manager.records[copier_hotkey]['performance'] = torch.zeros_like(final_score).tolist()
-                            logging.warning(f"Copying detected. Setting score of {copier_hotkey} to {0.0}")
-                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, created_at, final_score.to(self.config.device), expr=None, repo_name=hf_repo, func=None)
-
-                            continue
+                    
+                    # Check chain for previous submissions
+                    is_original, submission_block, original_submitter = self.check_chain_submission(hotkey_address, expr_hash)
+                    
+                    if not is_original:
+                        if original_submitter == hotkey_address:
+                            # This miner was the original submitter
+                            logging.info(f"Original submission by {hotkey_address} at block {submission_block}")
+                            accuracy_score = self.evaluate_individual(gene[0], datasets)
+                            accuracy_scores[hotkey_address] = accuracy_score
+                            self.gene_record_manager.add_record(
+                                hotkey_address, remote_gene_hash, submission_block, 
+                                accuracy_score, expr=gene[0], repo_name=hf_repo, 
+                                func=self.toolbox.compile(expr=gene[0])
+                            )
                         else:
-                            logging.warning(f"Duplicate expression detected from {hotkey_address}. Assigning zero score.")
+                            # This is a copy - assign zero score
+                            logging.warning(f"Duplicate solution detected from {hotkey_address}. Original by {original_submitter} at block {submission_block}")
                             accuracy_scores[hotkey_address] = torch.zeros((len(self.config.Validator.dataset_names),), device=self.config.device)
-                            self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, created_at, torch.zeros((len(self.config.Validator.dataset_names),), device=self.config.device), expr=None, repo_name=hf_repo, func=None)
-                            continue
-
+                            self.gene_record_manager.add_record(
+                                hotkey_address, remote_gene_hash, submission_block,
+                                torch.zeros((len(self.config.Validator.dataset_names),), device=self.config.device),
+                                expr=None, repo_name=hf_repo, func=None
+                            )
                     else:
+                        # New unique solution
                         accuracy_score = self.evaluate_individual(gene[0], datasets)
-                        #accuracy_score = accuracy#max(0, accuracy - self.base_accuracy)
                         accuracy_scores[hotkey_address] = accuracy_score
-                        self.gene_record_manager.add_record(hotkey_address, remote_gene_hash, created_at, accuracy_score, expr=gene[0], repo_name=hf_repo, func=self.toolbox.compile(expr=gene[0]))
-
-                    
-                    
+                        self.gene_record_manager.add_record(
+                            hotkey_address, remote_gene_hash, current_time,
+                            accuracy_score, expr=gene[0], repo_name=hf_repo,
+                            func=self.toolbox.compile(expr=gene[0])
+                        )
                 else:
                     logging.info(f"No gene received from: {hotkey_address}")
-                    accuracy_scores[hotkey_address] = 0.0
-
+                    accuracy_scores[hotkey_address] = torch.zeros((len(self.config.Validator.dataset_names),), device=self.config.device)
             else:
                 existing_record = self.gene_record_manager.get_record(hotkey_address)
                 if existing_record:
-                    #time_penalty = self.calculate_time_penalty(existing_record['timestamp'], best_gene['timestamp'])
                     accuracy_scores[hotkey_address] = torch.tensor(existing_record['performance'], device=self.config.device)
                     logging.info(f"No new gene from: {hotkey_address}.")
                 else:
-                    accuracy_scores[hotkey_address] = 0.0
+                    accuracy_scores[hotkey_address] = torch.zeros((len(self.config.Validator.dataset_names),), device=self.config.device)
                     logging.info(f"No record found for: {hotkey_address}")
 
-
+        # Score computation and weight setting
         if accuracy_scores:
             top_k = self.config.Validator.top_k
             top_k_weights = self.config.Validator.top_k_weight
             logging.info(f"Accuracy Scores: {accuracy_scores}")
             avg_ranks, detailed_ranks = self.compute_ranks(accuracy_scores)
             
-            # Sort hotkeys by average rank (ascending since lower rank is better)
+            # Sort hotkeys by average rank
             sorted_hotkeys = sorted(avg_ranks.keys(), key=lambda h: avg_ranks[h])
             
             # Initialize scores dict
@@ -272,14 +281,14 @@ class BaseValidator(ABC):
             
             # Assign top-k weights to best performing miners
             for i, hotkey in enumerate(sorted_hotkeys[:top_k]):
-                if i < len(top_k_weights):  # Make sure we have enough weights
+                if i < len(top_k_weights):
                     self.scores[hotkey] = top_k_weights[i]
                 
             total_weight = sum(self.scores.values())
             if total_weight > 0:
                 self.scores = {k: v/total_weight for k, v in self.scores.items()}
                 
-            # Log detailed performance
+            # Log performance details
             for hotkey in accuracy_scores:
                 try:
                     logging.info(f"Miner {hotkey}:")
@@ -288,12 +297,6 @@ class BaseValidator(ABC):
                     logging.info(f"  Average rank: {avg_ranks[hotkey]:.2f}")
                 except:
                     pass
-                    
-
-
-            # Define fixed weights for top-k miners
-
-            #score_hotkey_pairs = [(score, hotkey) for hotkey, score in self.scores.items() if score > 0]
 
             logging.info(f"Pre-normalization scores: {self.scores}")
             logging.info(f"Normalized scores: {self.normalized_scores}")

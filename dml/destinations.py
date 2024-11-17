@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 
 from dml.configs.config import config
 from dml.gene_io import save_individual_to_json
+from dml.chain.chain_manager import SolutionId
 
 from huggingface_hub import HfApi
 
@@ -89,3 +90,53 @@ class PoolPushDestination(PushDestination):
             "message": message,
             "timestamp":timestamp
         }
+    
+class ChainPushDestination(PushDestination):
+    def __init__(self, chain_manager, compute_hash_fn):
+        self.chain_manager = chain_manager
+        self.compute_hash_fn = compute_hash_fn  # Function to compute solution hash
+
+    def push(self, gene, commit_message):
+        try:
+            # Compute solution hash using the provided function
+            solution_hash = self.compute_hash_fn(gene)
+            
+            # Get current block number
+            current_block = self.chain_manager.subtensor.get_current_block()
+            
+            # Create solution ID
+            solution_id = SolutionId(
+                repo_name=config.gene_repo,
+                commit=commit_message,
+                solution_hash=solution_hash,
+                block_number=current_block
+            )
+            
+            # Store on chain
+            self.chain_manager.subtensor.commit(
+                self.chain_manager.wallet,
+                self.chain_manager.subnet_uid,
+                solution_id.to_compressed_str()
+            )
+            
+            logging.info(f"Successfully pushed solution metadata to chain at block {current_block}")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to push solution metadata to chain: {str(e)}")
+            return False
+            
+
+class HFChainPushDestination(HuggingFacePushDestination):
+    def __init__(self, repo_name, chain_manager, compute_hash_fn):
+        super().__init__(repo_name)
+        self.chain_push = ChainPushDestination(chain_manager, compute_hash_fn)
+
+    def push(self, gene, commit_message, save_temp=config.Miner.save_temp_only):
+        # First push to HuggingFace
+        
+        # Then push to chain
+        success = self.chain_push.push(gene, commit_message)
+
+        if success:
+            logging.info("Chain push likely successful. Attempting to push to HF")
+            super().push(gene, commit_message, save_temp)
