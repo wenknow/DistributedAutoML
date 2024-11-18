@@ -1,4 +1,4 @@
-import argparse 
+import argparse
 import logging
 
 from dml.validators import ValidatorFactory
@@ -8,13 +8,14 @@ from dml.chain.hf_manager import HFManager
 from dml.configs.config import config
 
 
-def setup_logging(log_file='validator.log'):
+def setup_logging(log_file="validator.log"):
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
+
 
 def main(config):
     # Initialize Bittensor Network
@@ -29,13 +30,14 @@ def main(config):
     config.chain_manager = ChainManager(
         subtensor=BittensorNetwork.subtensor,
         subnet_uid=bt_config.netuid,
-        wallet=BittensorNetwork.wallet
+        wallet=BittensorNetwork.wallet,
     )
 
     # Create and start validator
     validator = ValidatorFactory.get_validator(config)
     logging.info("Starting periodic validation")
     validator.start_periodic_validation()
+
 
 if __name__ == "__main__":
     validator_type = "loss"  # Change this to "loss" as needed
