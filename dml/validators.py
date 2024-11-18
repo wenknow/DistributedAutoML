@@ -154,33 +154,19 @@ class BaseValidator(ABC):
 
         return torch.tensor(accuracies, device=self.config.device)
 
-    def compute_ranks(self, scores_dict):
+    def compute_ranks(self, filtered_scores_dict):
         """
         Convert raw accuracy scores to ranks for each dataset.
         Lower rank is better (1 = best).
         """
 
-        filtered_scores_dict = {}
-
-        # Iterate over each key-value pair in the original dictionary
-        for k, v in scores_dict.items():
-            if isinstance(v, torch.Tensor):
-                # For tensors, check if the sum is zero
-                is_zero = torch.sum(v) == 0.0
-            else:
-                # For non-tensors, check if the value is exactly 0.0
-                is_zero = (v == 0.0) if isinstance(v, (int, float)) else False
-
-            # Only add the item to the new dictionary if it’s not zero
-            if not is_zero:
-                filtered_scores_dict[k] = v
-
         hotkeys = list(filtered_scores_dict.keys())
+
         # Convert dict to tensor matrix [n_miners x n_datasets]
         try:
             accuracy_matrix = torch.stack([filtered_scores_dict[h] for h in hotkeys])
         except:
-            raise ValueError(f"Incorrect values passed: {accuracy_matrix}")
+            raise ValueError(f"Incorrect values passed: {filtered_scores_dict}")
 
         # Get ranks for each dataset (column)
         # -accuracy_matrix because we want highest accuracy to get rank 1
@@ -445,47 +431,67 @@ class BaseValidator(ABC):
                     )
 
         # Score computation and weight setting
+
         if accuracy_scores:
+            #if len(accuracy_scores) > 0:
             top_k = self.config.Validator.top_k
             top_k_weights = self.config.Validator.top_k_weight
             logging.info(f"Accuracy Scores: {accuracy_scores}")
-            avg_ranks, detailed_ranks = self.compute_ranks(accuracy_scores)
 
-            # Sort hotkeys by average rank
-            sorted_hotkeys = sorted(avg_ranks.keys(), key=lambda h: avg_ranks[h])
+            filtered_scores_dict = {}
 
-            # Initialize scores dict
-            self.scores = {h: 0.0 for h in self.bittensor_network.metagraph.hotkeys}
+            # Iterate over each key-value pair in the original dictionary
+            for k, v in accuracy_scores.items():
+                if isinstance(v, torch.Tensor):
+                    # For tensors, check if the sum is zero
+                    is_zero = torch.sum(v) == 0.0
+                else:
+                    # For non-tensors, check if the value is exactly 0.0
+                    is_zero = (v == 0.0) if isinstance(v, (int, float)) else False
 
-            # Assign top-k weights to best performing miners
-            for i, hotkey in enumerate(sorted_hotkeys[:top_k]):
-                if i < len(top_k_weights):
-                    self.scores[hotkey] = top_k_weights[i]
+                # Only add the item to the new dictionary if it’s not zero
+                if not is_zero:
+                    filtered_scores_dict[k] = v
 
-            total_weight = sum(self.scores.values())
+            if len(filtered_scores_dict) > 0:
+                             
+                avg_ranks, detailed_ranks = self.compute_ranks(filtered_scores_dict)
 
-            logging.info(f"Pre-normalization scores: {self.scores}")
+                # Sort hotkeys by average rank
+                sorted_hotkeys = sorted(avg_ranks.keys(), key=lambda h: avg_ranks[h])
 
-            if total_weight > 0:
-                self.scores = {k: v / total_weight for k, v in self.scores.items()}
+                # Initialize scores dict
+                self.scores = {h: 0.0 for h in self.bittensor_network.metagraph.hotkeys}
 
-            # Log performance details
-            for hotkey in accuracy_scores:
-                if self.scores[hotkey] > 0:
+                # Assign top-k weights to best performing miners
+                for i, hotkey in enumerate(sorted_hotkeys[:top_k]):
+                    if i < len(top_k_weights):
+                        self.scores[hotkey] = top_k_weights[i]
 
-                    try:
-                        logging.info(f"Miner {hotkey}:")
-                        logging.info(f"  Final score: {self.scores[hotkey]:.4f}")
-                        logging.info(f"  Raw accuracies: {accuracy_scores[hotkey]}")
-                        logging.info(f"  Average rank: {avg_ranks[hotkey]:.2f}")
-                    except:
-                        pass
+                total_weight = sum(self.scores.values())
 
-            logging.info(f"Normalized scores: {self.scores}")
+                logging.info(f"Pre-normalization scores: {self.scores}")
 
-            if self.bittensor_network.should_set_weights():
-                self.bittensor_network.set_weights(self.scores)
-                logging.info("Weights Setting attempted !")
+                if total_weight > 0:
+                    self.scores = {k: v / total_weight for k, v in self.scores.items()}
+
+                # Log performance details
+                for hotkey in accuracy_scores:
+                    if self.scores[hotkey] > 0:
+
+                        try:
+                            logging.info(f"Miner {hotkey}:")
+                            logging.info(f"  Final score: {self.scores[hotkey]:.4f}")
+                            logging.info(f"  Raw accuracies: {accuracy_scores[hotkey]}")
+                            logging.info(f"  Average rank: {avg_ranks[hotkey]:.2f}")
+                        except:
+                            pass
+
+                logging.info(f"Normalized scores: {self.scores}")
+
+                if self.bittensor_network.should_set_weights():
+                    self.bittensor_network.set_weights(self.scores)
+                    logging.info("Weights Setting attempted !")
 
     def check_registration(self):
         try:
