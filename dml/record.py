@@ -111,7 +111,10 @@ class GeneRecordManager:
                 try:
                     batch_result = func(x, y)
                     # Handle both scalar and tensor outputs
-                    outputs.append(batch_result.detach())
+                    if isinstance(batch_result, torch.Tensor):
+                        outputs.append(batch_result.detach())
+                    else:
+                        outputs.append(batch_result)
                 except Exception as e:
                     logging.warning(f"Error evaluating expression batch: {e}")
                     return None
@@ -135,12 +138,13 @@ class GeneRecordManager:
 
     def add_record(self, 
                   miner_hotkey: str, 
-                  gene_hash: str, 
-                  timestamp: float, 
+                  chain_hash: str, 
+                  block_number: int, 
                   performance: float, 
                   expr=None, 
                   repo_name: str = None, 
-                  func = None):
+                  func = None,
+                  gene_string: str = None):
         """Add a new record for a miner's gene submission"""
 
         try:
@@ -149,9 +153,10 @@ class GeneRecordManager:
             pass
         
         self.records[miner_hotkey] = {
-            'gene_hash': gene_hash,
-            'timestamp': timestamp,
-            'performance': performance
+            'chain_hash': chain_hash,
+            'block_number': block_number,
+            'performance': performance,
+            'gene_string': gene_string
         }
 
         
@@ -162,7 +167,7 @@ class GeneRecordManager:
                 if func_signature not in self.expression_registry:
 
                     self.expression_registry[func_signature] = {
-                        "earliest_timestamp": timestamp,
+                        "earliest_timestamp": block_number,
                         "earliest_hotkey": miner_hotkey,
                         "score": performance
                     }
@@ -190,4 +195,4 @@ class GeneRecordManager:
         record = self.get_record(miner_hotkey)
         if record is None:
             return True
-        return record['gene_hash'] != remote_gene_hash
+        return record['chain_hash'] != remote_gene_hash

@@ -74,18 +74,12 @@ class SolutionId(BaseModel):
     repo_name: str = Field(
         description="Repository name where the solution can be found"
     )
-    commit: Optional[str] = Field(
-        description="Commit hash of the solution. May be empty if not yet committed.",
-        default=None
-    )
+
     solution_hash: Optional[str] = Field(
         description="Hash of the solution/loss function",
         default=None
     )
-    block_number: Optional[int] = Field(
-        description="Block number when solution was submitted",
-        default=None
-    )
+
     
     def to_compressed_str(self) -> str:
         """Returns a compressed string representation."""
@@ -148,14 +142,13 @@ class ChainManager:
                 self.subnet_uid, 
                 hotkey
             )
-            
             if not metadata:
                 return None
             
             commitment = metadata["info"]["fields"][0]
             hex_data = commitment[list(commitment.keys())[0]][2:]
             chain_str = bytes.fromhex(hex_data).decode()
-            
+
             try:
                 solution_id = SolutionId.from_compressed_str(chain_str)
                 return SolutionMetadata(id=solution_id, block=metadata["block"])
@@ -189,13 +182,39 @@ class ChainManager:
         except Exception as e:
             logging.error(f"Failed to store HF repo: {str(e)}")
             raise
+
+    def store_raw_string(self, store_string: str):
+        """Stores solution metadata including repo and hash on the chain."""
+        if self.wallet is None:
+            raise ValueError("No wallet available to write to the chain.")
+        
+        try:
+            # Get current block number
+            current_block = self.subtensor.get_current_block()
+            # solution_id.block_number = current_block
+            
+            self.subtensor.commit(
+                self.wallet,
+                self.subnet_uid,
+                store_string,
+            )
+
+            logging.info("Attempted Submission to chain ")
+
+            return current_block
+        except Exception as e:
+            logging.error(f"Failed to store HF repo: {str(e)}")
+            raise
     
     def retrieve_hf_repo(self, hotkey: str) -> Optional[str]:
         """Retrieves repository information from solution metadata."""
         metadata = self.retrieve_solution_metadata(hotkey)
-        if metadata and metadata.id:
-            return metadata.id.repo_name
-        return None
+
+        try:
+            if metadata and metadata.id:
+                return metadata.id.repo_name
+        except:
+            return None
 
     def get_submission_block(self, hotkey: str) -> Optional[int]:
         """Retrieves the block number when a solution was submitted."""

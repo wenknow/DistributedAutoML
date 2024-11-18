@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import random
+import hashlib 
 
 def tensor_to_numpy(tensor):
     return tensor.cpu().numpy() if tensor.is_cuda else tensor.numpy()
@@ -59,3 +60,13 @@ def calculate_tree_depth(expression: str) -> int:
         raise ValueError("Mismatched parentheses in the expression.")
 
     return max_depth
+
+def compute_chain_hash(func_str) -> str:
+    """
+    Computes deterministic SHA256 hash of function for chain storage.
+    Used by miners to submit and validators to verify downloads.
+    """
+    # Convert function to string in a deterministic way
+    #func_str = str(func)
+    # Create SHA256 hash
+    return hashlib.sha256(func_str.encode()).hexdigest()

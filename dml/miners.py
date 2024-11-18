@@ -19,6 +19,8 @@ import time
 import queue
 import json 
 
+from bittensor.core.errors import MetadataError
+
 from deap import algorithms, base, creator, tools, gp
 from functools import partial
 
@@ -120,6 +122,12 @@ class BaseMiner(ABC, PushMixin):
             self.best_solution['pushed'] = True
             self.best_solution['push_attempts'] = 0  # Reset attempts counter
             logging.info(f"Successfully pushed solution at generation {generation}")
+        
+        except MetadataError as e:
+            # Update tracking on failure
+            self.last_push_success = False
+            self.best_solution['push_attempts'] += 1
+            logging.error(f"Push attempt failed: {e}")
             
         except Exception as e:
             # Update tracking on failure
@@ -335,7 +343,6 @@ class BaseMiner(ABC, PushMixin):
             if (best_updated or not self.last_push_success) and self.should_attempt_push():
                 self.attempt_push(self.best_solution['individual'], generation)
 
-
             # Select the next generation individuals
             offspring = self.toolbox.select(population, len(population))
             # Clone the selected individuals
@@ -355,7 +362,6 @@ class BaseMiner(ABC, PushMixin):
                         if child2.height > self.config.Miner.gp_tree_height:
                             offspring[i+1] = safe_temp2
                             
-
                         
                         del offspring[i].fitness.values
                         if i + 1 < len(offspring):
@@ -381,7 +387,7 @@ class BaseMiner(ABC, PushMixin):
             # Update the hall of fame with the generated individuals
             hof.update(population)
 
-             # Save checkpoint
+            # Save checkpoint
             self.save_checkpoint(
                 population, hof, self.best_solution['individual'], 
                 generation, random.getstate(), torch.get_rng_state(), 
