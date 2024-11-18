@@ -77,8 +77,7 @@ class BaseValidator(ABC):
         self.chain_metadata_cache.clear()
         
         for hotkey in self.bittensor_network.metagraph.hotkeys:
-            if hotkey not in ["5GGtaQQ6RLjEV9idE48NNwe2qLFMRhEkqHXBAnTrhnwUxiQy","5EWdLxY75qAfKGc8Sd9cxqxHKr4wUmnYgcCGrfCFaum43m1M", "5Exps1XhjBCvkT11sFcuzbDpF9pHw4oa94RpbXYkJp2aUkW3"]:
-                continue
+
             try:
                 metadata = self.chain_manager.retrieve_solution_metadata(hotkey)
                 if metadata:
