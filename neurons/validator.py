@@ -34,21 +34,9 @@ def main(config):
 
     # Create and start validator
     validator = ValidatorFactory.get_validator(config)
-    #validator.measure_baseline()
     logging.info("Starting periodic validation")
     validator.start_periodic_validation()
 
 if __name__ == "__main__":
-    # config = {
-    #     'bittensor_config': config.bittensor_config,
-    #     'netuid': config.netuid,
-    #     'hf_token': config.hf_token,
-    #     'my_repo_id': config.my_repo_id,
-    #     'averaged_model_repo_id': config.averaged_model_repo_id,
-    #     'device': config.device,
-    #     'validation_interval': config.validation_interval,
-    #     'hf_repo': config.hf_repo
-    # }
-    
     validator_type = "loss"  # Change this to "loss" as needed
     main(config)
