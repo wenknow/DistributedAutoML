@@ -1,8 +1,11 @@
-#Thanks SN9
+import bittensor as bt
+from pydantic import BaseModel, Field
+import functools
+from typing import Optional, ClassVar, Type
+import base64
+import logging
 
 import multiprocessing
-import functools
-import bittensor as bt
 import os
 import lzma
 import base64
@@ -54,198 +57,168 @@ def run_in_subprocess(func: functools.partial, ttl: int, mode="fork") -> Any:
     return result
 
 
-class ChainMultiAddressStore:
-    """Chain based implementation for storing and retrieving multiaddresses."""
+SHA256_BASE_64_LENGTH = 44  # Length of base64 encoded SHA256 hash
+GIT_COMMIT_LENGTH = 40  # Length of git commit hash
+MAX_METADATA_BYTES = 128  # Maximum metadata size allowed on chain
 
+class SolutionId(BaseModel):
+    """Uniquely identifies a solution/loss function"""
+    class Config:
+        frozen = True
+        extra = "forbid"
+    
+    MAX_REPO_ID_LENGTH: ClassVar[int] = (
+        MAX_METADATA_BYTES - GIT_COMMIT_LENGTH - SHA256_BASE_64_LENGTH - 2  # separators
+    )
+    
+    repo_name: str = Field(
+        description="Repository name where the solution can be found"
+    )
+
+    solution_hash: Optional[str] = Field(
+        description="Hash of the solution/loss function",
+        default=None
+    )
+
+    
+    def to_compressed_str(self) -> str:
+        """Returns a compressed string representation."""
+        return f"{self.repo_name}:{self.solution_hash}"
+    
+    @classmethod
+    def from_compressed_str(cls, cs: str) -> Type["SolutionId"]:
+        """Returns an instance of this class from a compressed string representation"""
+        tokens = cs.split(":")
+        return cls(
+            repo_name=tokens[0],
+            solution_hash=tokens[1] if tokens[1] != "None" else None
+        )
+
+class SolutionMetadata(BaseModel):
+    """Metadata about a stored solution including its ID and block number."""
+    id: SolutionId
+    block: Optional[int] = None
+
+class ChainManager:
+    """Enhanced chain manager for storing and retrieving solution metadata."""
+    
     def __init__(
         self,
         subtensor: bt.subtensor,
         subnet_uid: int,
         wallet: Optional[bt.wallet] = None,
-        
     ):
         self.subtensor = subtensor
         self.wallet = wallet
         self.subnet_uid = subnet_uid
-
-    def store_hf_repo(self, hf_repo: str):
-        """Stores compressed multiaddress on this subnet for a specific wallet."""
+    
+    def store_solution_metadata(self, hotkey: str, solution_id: SolutionId):
+        """Stores solution metadata on the chain for a specific wallet."""
         if self.wallet is None:
             raise ValueError("No wallet available to write to the chain.")
-
-        # Compress the multiaddress
-
-        # Wrap calls to the subtensor in a subprocess with a timeout to handle potential hangs.
-        # partial = functools.partial(
-        #     self.subtensor.commit,
-        #     self.wallet,
-        #     self.subnet_uid,
-        #     hf_repo,
-        # )
-        # run_in_subprocess(partial, 60)
-
-        self.subtensor.commit(
-            self.wallet,
-            self.subnet_uid,
-            hf_repo
-        )
-
-    def retrieve_hf_repo(self, hotkey: str) -> Optional[str]:
-        """Retrieves and decompresses multiaddress on this subnet for specific hotkey"""
-        # Wrap calls to the subtensor in a subprocess with a timeout to handle potential hangs.
-
-        # partial = functools.partial(
-        #     bt.extrinsics.serving.get_metadata, self.subtensor, self.subnet_uid, hotkey
-        # )
-
-        try:
-        #metadata = run_in_subprocess(partial, 60)
-            metadata = bt.core.extrinsics.serving.get_metadata( self.subtensor, self.subnet_uid, hotkey)
-        except:
-             metadata = None
-             logging.warning(f"Failed to retreive multiaddress for: {hotkey}")
-            
-
-        if not metadata:
-            return None
-
-        commitment = metadata["info"]["fields"][0]
-        hex_data = commitment[list(commitment.keys())[0]][2:]
-        multiaddress = bytes.fromhex(hex_data).decode()
-
-        try:
-            return multiaddress
-        except:
-            # If the data format is not correct or decompression fails, return None.
-            bt.logging.trace(
-                f"Failed to parse the data on the chain for hotkey {hotkey}."
-            )
-            return None
-
-# Synchronous test cases for ChainMultiAddressStore
-
-
-import json
-import os
-from typing import Optional
-
-class LocalAddressStore:
-    """Simulated local storage for storing and retrieving multiaddresses, using a file for persistence."""
-
-    def __init__(self, 
-    subtensor: bt.subtensor,
-    subnet_uid: int,
-    wallet: Optional[bt.wallet] = None,
-    ):
-        self.storage_file = "storage.json"
-        self.wallet = wallet
-        # Ensure the storage file exists
-        if not os.path.exists(self.storage_file):
-            with open(self.storage_file, 'w') as file:
-                json.dump({}, file)
-
-    def _load_storage(self):
-        """Loads the storage content from a file."""
-        with open(self.storage_file, 'r') as file:
-            return json.load(file)
-
-    def _save_storage(self, storage):
-        """Saves the updated storage content to a file."""
-        with open(self.storage_file, 'w') as file:
-            json.dump(storage, file)
-
-    def store_hf_repo(self, hf_repo: str, hotkey):
-        """Stores the Hugging Face repository link for a specific wallet."""
-        if self.wallet is None:
-            raise ValueError("No wallet available to write to the storage.")
         
-        storage = self._load_storage()
-        storage[hotkey] = hf_repo
-        self._save_storage(storage)
-        print(f"Stored {hf_repo} for {hotkey}")
+        try:
+            # Get current block number
+            current_block = self.subtensor.get_current_block()
+            solution_id.block_number = current_block
+            
+            self.subtensor.commit(
+                self.wallet,
+                self.subnet_uid,
+                solution_id.to_compressed_str(),
+            )
 
+            logging.info(f"Attempted Submission to chain {hotkey}")
+            return current_block
+        except Exception as e:
+            logging.error(f"Failed to store solution metadata: {str(e)}")
+            raise
+    
+    def retrieve_solution_metadata(self, hotkey: str) -> Optional[SolutionMetadata]:
+        """Retrieves solution metadata from the chain for a specific hotkey"""
+        try:
+            metadata = bt.core.extrinsics.serving.get_metadata(
+                self.subtensor, 
+                self.subnet_uid, 
+                hotkey
+            )
+            if not metadata:
+                return None
+            
+            commitment = metadata["info"]["fields"][0]
+            hex_data = commitment[list(commitment.keys())[0]][2:]
+            chain_str = bytes.fromhex(hex_data).decode()
+
+            try:
+                solution_id = SolutionId.from_compressed_str(chain_str)
+                return SolutionMetadata(id=solution_id, block=metadata["block"])
+            except Exception as e:
+                logging.error(f"Failed to parse solution metadata for hotkey {hotkey}: {e}")
+                return None
+                
+        except Exception as e:
+            logging.error(f"Failed to retrieve solution metadata: {str(e)}")
+            return None
+    
+    def store_hf_repo(self, solution_id: SolutionId):
+        """Stores solution metadata including repo and hash on the chain."""
+        if self.wallet is None:
+            raise ValueError("No wallet available to write to the chain.")
+        
+        try:
+            # Get current block number
+            current_block = self.subtensor.get_current_block()
+            solution_id.block_number = current_block
+            
+            self.subtensor.commit(
+                self.wallet,
+                self.subnet_uid,
+                solution_id.to_compressed_str(),
+            )
+
+            logging.info("Attempted Submission to chain ")
+
+            return current_block
+        except Exception as e:
+            logging.error(f"Failed to store HF repo: {str(e)}")
+            raise
+
+    def store_raw_string(self, store_string: str):
+        """Stores solution metadata including repo and hash on the chain."""
+        if self.wallet is None:
+            raise ValueError("No wallet available to write to the chain.")
+        
+        try:
+            # Get current block number
+            current_block = self.subtensor.get_current_block()
+            # solution_id.block_number = current_block
+            
+            self.subtensor.commit(
+                self.wallet,
+                self.subnet_uid,
+                store_string,
+            )
+
+            logging.info("Attempted Submission to chain ")
+
+            return current_block
+        except Exception as e:
+            logging.error(f"Failed to store HF repo: {str(e)}")
+            raise
+    
     def retrieve_hf_repo(self, hotkey: str) -> Optional[str]:
-        """Retrieves the Hugging Face repository link for a specific wallet."""
-        storage = self._load_storage()
-        hf_repo = storage.get(hotkey)
-        if hf_repo:
-            print(f"Retrieved {hf_repo}")
-            return hf_repo
-        else:
-            print(f"Failed to retrieve repository for: {hotkey}")
+        """Retrieves repository information from solution metadata."""
+        metadata = self.retrieve_solution_metadata(hotkey)
+
+        try:
+            if metadata and metadata.id:
+                return metadata.id.repo_name
+        except:
             return None
 
-
-def test_store_multiaddress():
-    """Verifies that the ChainMultiAddressStore can store data on the chain."""
-    multiaddress = "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N"
-
-    # Use a different subnet that does not leverage chain storage to avoid conflicts.
-    subtensor = bt.subtensor()
-
-    # Uses .env configured wallet/hotkey/uid for the test.
-    coldkey = os.getenv("TEST_COLDKEY")
-    hotkey = os.getenv("TEST_HOTKEY")
-    net_uid = int(os.getenv("TEST_SUBNET_UID"))
-
-    wallet = bt.wallet(name=coldkey, hotkey=hotkey)
-
-    address_store = ChainMultiAddressStore(subtensor, wallet, net_uid)
-
-    # Store the multiaddress on chain.
-    address_store.store_multiaddress(hotkey, multiaddress)
-
-    print(f"Finished storing multiaddress for {hotkey} on the chain.")
-
-
-def test_retrieve_multiaddress():
-    """Verifies that the ChainMultiAddressStore can retrieve data from the chain."""
-    expected_multiaddress = "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N"
-
-    # Use a different subnet that does not leverage chain storage to avoid conflicts.
-    subtensor = bt.subtensor()
-
-    # Uses .env configured hotkey/uid for the test.
-    net_uid = int(os.getenv("TEST_SUBNET_UID"))
-    hotkey = os.getenv("TEST_HOTKEY")
-
-    address_store = ChainMultiAddressStore(subtensor, None, net_uid)
-
-    # Retrieve the multiaddress from the chain.
-    retrieved_multiaddress = address_store.retrieve_multiaddress(hotkey)
-
-    print(f"Retrieved multiaddress matches expected: {expected_multiaddress == retrieved_multiaddress}")
-
-
-def test_roundtrip_multiaddress():
-    """Verifies that the ChainMultiAddressStore can roundtrip data on the chain."""
-    multiaddress = "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N"
-
-    # Use a different subnet that does not leverage chain storage to avoid conflicts.
-    subtensor = bt.subtensor()
-
-    # Uses .env configured wallet/hotkey/uid for the test.
-    coldkey = os.getenv("TEST_COLDKEY")
-    hotkey = os.getenv("TEST_HOTKEY")
-    net_uid = int(os.getenv("TEST_SUBNET_UID"))
-
-    wallet = bt.wallet(name=coldkey, hotkey=hotkey)
-
-    address_store = ChainMultiAddressStore(subtensor, wallet, net_uid)
-
-    # Store the multiaddress on chain.
-    address_store.store_multiaddress(hotkey, multiaddress)
-
-    # Retrieve the multiaddress from the chain.
-    retrieved_multiaddress = address_store.retrieve_multiaddress(hotkey)
-
-    print(f"Expecting matching multiaddress: {multiaddress == retrieved_multiaddress}")
-
-
-
-if __name__ == "__main__":
-    # Can only commit data every ~20 minutes.
-    # asyncio.run(test_roundtrip_model_metadata())
-    # asyncio.run(test_store_model_metadata())
-    test_retrieve_model_metadata()
-
+    def get_submission_block(self, hotkey: str) -> Optional[int]:
+        """Retrieves the block number when a solution was submitted."""
+        metadata = self.retrieve_solution_metadata(hotkey)
+        if metadata and metadata.id:
+            return metadata.id.block_number
+        return None

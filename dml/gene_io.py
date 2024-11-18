@@ -3,11 +3,35 @@ from dml.gp_fix import SafePrimitiveTree
 import json
 import re
 
-
+def convert_tensor_literals(expr: str) -> str:
+    """
+    Convert tensor literals in expressions to explicit torch.tensor calls.
+    
+    Args:
+        expr: String containing the expression with tensor literals
+        
+    Returns:
+        Modified string with tensor literals converted to torch.tensor calls
+        
+    Example:
+        'safe_add(x, tensor(0.3790))' -> 'safe_add(x, torch.tensor(0.3790))'
+    """
+    # First pattern matches tensor literals that have just numbers
+    expr = re.sub(r'(?<!torch\.)tensor\(([-+]?[0-9]*\.?[0-9]+)\)', 
+                  r'torch.tensor(\1)', 
+                  expr)
+    
+    # Second pattern matches tensor literals that might have more complex content
+    expr = re.sub(r'(?<!torch\.)tensor\((.*?)\)', 
+                  r'torch.tensor(\1)', 
+                  expr)
+    
+    return expr
 
 def safe_eval(expr):
     # Replace tensor(...) with torch.tensor(...)
-    expr = re.sub(r'tensor\((.*?)\)', r'torch.tensor(\1)', expr)
+    #expr = re.sub(r'tensor\((.*?)\)', r'torch.tensor(\1)', expr)
+    expr = convert_tensor_literals(expr)
     try:
         return eval(expr)
     except NameError:
@@ -30,4 +54,4 @@ def load_individual_from_json(data=None, pset=None, toolbox=None, filename = Non
     expr = SafePrimitiveTree.from_string(expr_str, pset, safe_eval)
     individual = creator.Individual(expr)
     func = toolbox.compile(expr=individual)
-    return individual, func
+    return individual, func, expr_str

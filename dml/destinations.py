@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 
 from dml.configs.config import config
 from dml.gene_io import save_individual_to_json
+from dml.chain.chain_manager import SolutionId
+from dml.utils import compute_chain_hash
 
 from huggingface_hub import HfApi
 
@@ -89,3 +91,53 @@ class PoolPushDestination(PushDestination):
             "message": message,
             "timestamp":timestamp
         }
+    
+class ChainPushDestination(PushDestination):
+    def __init__(self, chain_manager):
+        self.chain_manager = chain_manager
+
+    def push(self, gene, commit_message):
+        try:
+            # Compute solution hash using the provided function
+            solution_hash = compute_chain_hash(str(gene))
+            logging.info(f"Pushing gene {str(gene)} with hash {solution_hash}")
+            
+            # Get current block number
+            current_block = self.chain_manager.subtensor.get_current_block()
+            
+            # Create solution ID
+            solution_id = SolutionId(
+                repo_name=config.gene_repo,
+                solution_hash=solution_hash
+            )
+            
+            # Store on chain
+            self.chain_manager.subtensor.commit(
+                self.chain_manager.wallet,
+                self.chain_manager.subnet_uid,
+                solution_id.to_compressed_str()
+            )
+            
+            logging.info(f"Successfully pushed solution metadata to chain at block {current_block}")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to push solution metadata to chain: {str(e)}")
+            return False
+            
+
+class HFChainPushDestination(HuggingFacePushDestination):
+    def __init__(self, repo_name, chain_manager, **kwargs):
+        super().__init__(repo_name)
+        self.chain_push = ChainPushDestination(chain_manager)
+
+    def push(self, gene, commit_message, save_temp=config.Miner.save_temp_only):
+        # First push to HuggingFace
+        
+        # Then push to chain
+        success = self.chain_push.push(gene, commit_message)
+
+        if success:
+            logging.info("Chain push likely successful. Attempting to push to HF")
+            super().push(gene, commit_message, save_temp)
+        else:
+            logging.warn("Chain push unsuccessful. Failed to push gene !")
