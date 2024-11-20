@@ -143,15 +143,16 @@ class BaseValidator(ABC):
         pass
 
     def evaluate_individual(self, individual, datasets):
+        set_seed(self.seed)
         accuracies = []
         for dataset in datasets:
             model = self.create_model(individual, dataset.name)
-            model[0].to(self.config.device)
+            model[0].to(self.device)
             accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
             accuracies.append(accuracy)
             del model
 
-        return torch.tensor(accuracies, device=self.config.device)
+        return torch.tensor(accuracies, device=self.device)
 
     def compute_ranks(self, filtered_scores_dict):
         """
@@ -226,7 +227,7 @@ class BaseValidator(ABC):
             if not chain_meta:
                 accuracy_scores[hotkey_address] = torch.zeros(
                     (len(self.config.Validator.dataset_names),),
-                    device=self.config.device,
+                    device=self.device,
                 )
                 continue
 
@@ -243,7 +244,7 @@ class BaseValidator(ABC):
                 if gene is None:
                     accuracy_scores[hotkey_address] = torch.zeros(
                         (len(self.config.Validator.dataset_names),),
-                        device=self.config.device,
+                        device=self.device,
                     )
                     continue
 
@@ -257,7 +258,7 @@ class BaseValidator(ABC):
                     )
                     accuracy_scores[hotkey_address] = torch.zeros(
                         (len(self.config.Validator.dataset_names),),
-                        device=self.config.device,
+                        device=self.device,
                     )
                     continue
 
@@ -295,7 +296,7 @@ class BaseValidator(ABC):
                                 )
                                 accuracy_scores[existing_hotkey] = torch.zeros(
                                     (len(self.config.Validator.dataset_names),),
-                                    device=self.config.device,
+                                    device=self.device,
                                 )
                                 continue
 
@@ -305,7 +306,7 @@ class BaseValidator(ABC):
                                 )
                                 accuracy_scores[hotkey_address] = torch.zeros(
                                     (len(self.config.Validator.dataset_names),),
-                                    device=self.config.device,
+                                    device=self.device,
                                 )
                                 continue
                     else:
@@ -314,7 +315,7 @@ class BaseValidator(ABC):
                         )
                         accuracy_scores[hotkey_address] = torch.zeros(
                             (len(self.config.Validator.dataset_names),),
-                            device=self.config.device,
+                            device=self.device,
                         )
                         continue
 
@@ -324,7 +325,7 @@ class BaseValidator(ABC):
                     )
                     accuracy_scores[hotkey_address] = torch.zeros(
                         (len(self.config.Validator.dataset_names),),
-                        device=self.config.device,
+                        device=self.device,
                     )
                     continue
 
@@ -351,7 +352,7 @@ class BaseValidator(ABC):
                                 )
                                 accuracy_scores[existing_hotkey] = torch.zeros(
                                     (len(self.config.Validator.dataset_names),),
-                                    device=self.config.device,
+                                    device=self.device,
                                 )
                                 logging.info(
                                     f"Existing record by {existing_hotkey} copying from {hotkey_address}. Fixing."
@@ -359,7 +360,7 @@ class BaseValidator(ABC):
                             else:
                                 accuracy_scores[hotkey_address] = torch.zeros(
                                     (len(self.config.Validator.dataset_names),),
-                                    device=self.config.device,
+                                    device=self.device,
                                 )
                                 logging.info(
                                     f"Existing record by {hotkey_address} is a duplicate "
@@ -376,13 +377,13 @@ class BaseValidator(ABC):
                     )
                     accuracy_scores[hotkey_address] = torch.zeros(
                         (len(self.config.Validator.dataset_names),),
-                        device=self.config.device,
+                        device=self.device,
                     )
 
                 # Keep cached score
                 logging.info(f"{hotkey_address} using cached score")
                 accuracy_scores[hotkey_address] = torch.tensor(
-                    existing_record["performance"], device=self.config.device
+                    existing_record["performance"], device=self.device
                 )
 
         # Process all genes and check for duplicates
@@ -410,7 +411,7 @@ class BaseValidator(ABC):
                             )
                             accuracy_scores[hotkey_address] = torch.zeros(
                                 (len(self.config.Validator.dataset_names),),
-                                device=self.config.device,
+                                device=self.device,
                             )
                         else:
                             # Evaluate original/unique submissions
@@ -647,7 +648,7 @@ class LossValidator(BaseValidator):
 
     def create_model(self, individual, dataset_name):
 
-        return get_model_for_dataset(dataset_name), self.toolbox.compile(
+        return get_model_for_dataset(dataset_name).to_device(self.device), self.toolbox.compile(
             expr=individual
         )
 
