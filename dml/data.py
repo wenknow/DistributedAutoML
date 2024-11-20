@@ -5,6 +5,8 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 from typing import Any, List, Tuple, Optional, Union
 import os 
+import numpy as np
+import random
 
 @dataclass
 class DatasetSpec:
@@ -18,6 +20,11 @@ class DatasetSpec:
     batch_size: int = 32
     training_iterations: int = 1
     weight: float = 1.0  
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 def get_mnist_loaders(
     batch_size: int = 32,
@@ -42,8 +49,22 @@ def get_mnist_loaders(
     )
     
     return (
-        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers),
-        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        DataLoader(
+            train_dataset, 
+            batch_size=batch_size, 
+            shuffle=True, 
+            num_workers=num_workers, 
+            worker_init_fn=seed_worker,
+            generator=torch.Generator().manual_seed(42)
+        ),
+        DataLoader(
+            val_dataset, 
+            batch_size=batch_size, 
+            shuffle=False, 
+            num_workers=num_workers, 
+            worker_init_fn=seed_worker,
+            generator=torch.Generator().manual_seed(42)
+        )
     )
 
 def get_cifar10_loaders(
@@ -69,8 +90,22 @@ def get_cifar10_loaders(
     )
     
     return (
-        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers),
-        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        DataLoader(
+            train_dataset, 
+            batch_size=batch_size, 
+            shuffle=True, 
+            num_workers=num_workers, 
+            worker_init_fn=seed_worker,
+            generator=torch.Generator().manual_seed(42)
+        ),
+        DataLoader(
+            val_dataset, 
+            batch_size=batch_size, 
+            shuffle=False, 
+            num_workers=num_workers, 
+            worker_init_fn=seed_worker,
+            generator=torch.Generator().manual_seed(42)
+        )
     )
 
 def get_cifar100_loaders(
@@ -99,8 +134,22 @@ def get_cifar100_loaders(
     )
     
     return (
-        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers),
-        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        DataLoader(
+            train_dataset, 
+            batch_size=batch_size, 
+            shuffle=True, 
+            num_workers=num_workers, 
+            worker_init_fn=seed_worker, 
+            generator=torch.Generator.manual_seed(42)
+        ),
+        DataLoader(
+            val_dataset, 
+            batch_size=batch_size, 
+            shuffle=False, 
+            num_workers=num_workers, 
+            worker_init_fn=seed_worker,
+            generator=torch.Generator().manual_seed(42)
+        )
     )
 
 def get_imagenet_1k_loaders(
@@ -150,7 +199,9 @@ def get_imagenet_1k_loaders(
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(42)
     )
     
     val_loader = DataLoader(
@@ -158,7 +209,9 @@ def get_imagenet_1k_loaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(42)
     )
     
     return train_loader, val_loader
@@ -201,9 +254,6 @@ class ShakespeareDataset(Dataset):
         y = chunk[1:]
         return x, y
     
-
-
-
 def get_shakespeare_loaders(
     text_path: str = './data/shakespeare.txt',
     batch_size: int = 64,
@@ -229,14 +279,18 @@ def get_shakespeare_loaders(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=num_workers
+        num_workers=num_workers,
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(42)
     )
     
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=num_workers
+        num_workers=num_workers,
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(42)
     )
     
     return train_loader, val_loader, train_dataset.vocab_size

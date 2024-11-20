@@ -155,7 +155,7 @@ class BaseMiner(ABC, PushMixin):
 
     def get_hash(self, individual):
         """Gets the hash of an individual's gene expression"""
-        return compute_chain_hash(save_individual_to_json(individual)['expression'])
+        return compute_chain_hash(str(individual))
 
     def update_best_solution(self, individual, generation):
         """Update the best solution if new one is better"""

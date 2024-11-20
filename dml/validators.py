@@ -147,7 +147,6 @@ class BaseValidator(ABC):
         accuracies = []
         for dataset in datasets:
             model = self.create_model(individual, dataset.name)
-            model[0].to(self.device)
             accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
             accuracies.append(accuracy)
             del model
@@ -647,8 +646,8 @@ class LossValidator(BaseValidator):
         return train_loader, val_loader
 
     def create_model(self, individual, dataset_name):
-
-        return get_model_for_dataset(dataset_name).to_device(self.device), self.toolbox.compile(
+        set_seed(self.seed)
+        return get_model_for_dataset(dataset_name).to(self.device), self.toolbox.compile(
             expr=individual
         )
 
