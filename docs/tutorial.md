@@ -43,9 +43,9 @@ Edit the config files in the configs/ folder to set the following configurations
 - Miner Config:
 - Good luck ! Hyperparameter optimization here might help performance
 
-### 4. Register Metadata (Miner only)
+### ~~4. Register Metadata (Miner only) [Deprecated]~~
 
-Run the following script to register your Hugging Face repository to the chain:
+~~Run the following script to register your Hugging Face repository to the chain:~~
 
 ```
 python register_miner.py
