@@ -374,7 +374,8 @@ class BaseMiner(ABC, PushMixin):
     def mine(self):
         datasets = load_datasets(
             self.config.Miner.dataset_names, 
-            batch_size=self.config.Miner.batch_size
+            batch_size=self.config.Miner.batch_size,
+            seed=self.config.Miner.seed
         )
         self.measure_baseline(datasets)
 
