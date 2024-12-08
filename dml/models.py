@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch 
+from torch.optim import Optimizer
 
 class BaselineNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -203,3 +204,42 @@ def get_model_for_dataset(dataset_name: str, **kwargs) -> nn.Module:
     
     return MODEL_CREATORS[dataset_name](**kwargs)
 
+class TorchEvolvedOptimizer(Optimizer):
+   def __init__(self, params, evolved_func, lr=1e-3, weight_decay=0):
+       defaults = dict(lr=lr, weight_decay=weight_decay)
+       super().__init__(params, defaults)
+       self.evolved_func = evolved_func
+       self.state_size = 32 # Size of state vector
+       # Initialize state vector for each param group
+       self.optimizer_states = {i: torch.zeros(self.state_size) 
+                              for i in range(len(self.param_groups))}
+
+   def step(self, closure=None):
+       loss = None
+       if closure is not None:
+           loss = closure()
+
+       for group_idx, group in enumerate(self.param_groups):
+           for p in group['params']:
+               if p.grad is None:
+                   continue
+                   
+               # Get state for this param group
+               state = self.optimizer_states[group_idx]
+               
+               # Run evolved function
+               param_update, new_state = self.evolved_func(
+                   p.data,
+                   p.grad.data,
+                   state,
+                   group['lr'],
+                   group['weight_decay']
+               )
+               
+               # Store new state
+               self.optimizer_states[group_idx] = new_state
+               
+               # Apply updates
+               p.data.add_(param_update)
+               
+       return loss

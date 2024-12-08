@@ -2,6 +2,7 @@ import heapq
 import logging
 import os
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
@@ -250,7 +251,7 @@ class BaseValidator(ABC):
                 # Verify downloaded gene matches chain hash
                 # compiled_func = self.toolbox.compile(expr=gene[0])
                 compiled_func = gene[1]
-                computed_hash = compute_chain_hash(str(gene[2]))
+                computed_hash = compute_chain_hash(str(gene[2])+chain_meta["repo"])
                 if computed_hash != chain_meta["hash"]:
                     logging.warning(
                         f"Chain hash mismatch for {hotkey_address} gene {gene[2]} expected {chain_meta['hash']} found {computed_hash}"
@@ -260,6 +261,19 @@ class BaseValidator(ABC):
                         device=self.config.device,
                     )
                     continue
+
+                # Verify downloaded gene's repo id matches chain hotkey
+
+                if hotkey_address != gene[3]:
+                    logging.warning(
+                        f"Repo hotkey mismatch for {hotkey_address} and hotkey {gene[3]}"
+                    )
+                    accuracy_scores[hotkey_address] = torch.zeros(
+                        (len(self.config.Validator.dataset_names),),
+                        device=self.config.device,
+                    )
+                    continue   
+                    
 
                 try:
                     func_signature = (
@@ -331,7 +345,7 @@ class BaseValidator(ABC):
             else:
                 # Usexistinge  record for duplicate detection
                 if existing_record.get("gene_string") is not None:
-                    gene, func, gene_string = load_individual_from_json(
+                    gene, func, gene_string, repo_hotkey = load_individual_from_json(
                         data={"expression": existing_record["gene_string"]},
                         pset=self.pset,
                         toolbox=self.toolbox,
@@ -740,6 +754,76 @@ class LossValidator(BaseValidator):
         self.base_accuracy = self.evaluate((baseline_model, loss), val_loader)
         logging.info(f"Baseline model accuracy: {self.base_accuracy:.4f}")
 
+class OptimizerValidator(BaseValidator):
+    def __init__(self, config):
+        super().__init__(config)
+        self.baseline_times = {}
+        self.baseline_scores = {}
+        self.time_weight = 0.3  # Weight for time vs accuracy tradeoff
+       
+    def evaluate_individual(self, individual, datasets):
+        scores = []
+        times = []
+        
+        for dataset in datasets:
+            if dataset.name not in self.baseline_times:
+                self.measure_baseline(dataset)
+                
+            model = get_model_for_dataset(dataset.name)
+            model.to(self.device)
+            optimizer = self.create_evolved_optimizer(individual)
+
+            try:
+                # Time training
+                start_time = time.time()
+                model.train()
+                for epoch in range(self.config.Validator.training_epochs):
+                    for data, target in dataset.train_loader:
+                        data, target = data.to(self.device), target.to(self.device)
+                        optimizer.zero_grad()
+                        output = model(data)
+                        loss = F.cross_entropy(output, target)
+                        loss.backward()
+                        optimizer.step()
+                train_time = time.time() - start_time
+
+                # Evaluate
+                acc = self.evaluate(model, dataset.val_loader)
+                
+                # Compute normalized scores
+                time_ratio = self.baseline_times[dataset.name] / train_time
+                acc_ratio = acc / self.baseline_scores[dataset.name]
+                
+                # Combined score with time/accuracy tradeoff
+                score = (self.time_weight * time_ratio + 
+                        (1 - self.time_weight) * acc_ratio)
+                scores.append(score)
+
+            except Exception as e:
+                logging.error(f"Evaluation failed: {e}")
+                scores.append(0.0)
+
+        return torch.tensor(scores, device=self.device)
+
+    def measure_baseline(self, dataset):
+        model = get_model_for_dataset(dataset.name)
+        model.to(self.device)
+        optimizer = torch.optim.Adam(model.parameters())
+        
+        start_time = time.time()
+        model.train()
+        for epoch in range(self.config.Validator.training_epochs):
+            for data, target in dataset.train_loader:
+                data, target = data.to(self.device), target.to(self.device)
+                optimizer.zero_grad()
+                output = model(data)
+                loss = F.cross_entropy(output, target)
+                loss.backward()
+                optimizer.step()
+        
+        self.baseline_times[dataset.name] = time.time() - start_time
+        self.baseline_scores[dataset.name] = self.evaluate(model, dataset.val_loader)
+
 
 class ValidatorFactory:
     @staticmethod
@@ -749,5 +833,8 @@ class ValidatorFactory:
             return ActivationValidator(config)
         elif validator_type == "loss":
             return LossValidator(config)
+        elif validator_type == "optimizer":
+            return OptimizerValidator(config)
         else:
             raise ValueError(f"Unknown validator type: {validator_type}")
+
