@@ -303,15 +303,17 @@ class BaseMiner(ABC, PushMixin):
     def create_n_evaluate(self, individual, datasets):
         fitness = 0.0
         for dataset in datasets:
-            model = self.create_model(individual, dataset.name)
-            try:
-                self.train(model, train_loader=dataset.train_loader)
-                fitness += (
-                    self.evaluate(model, val_loader=dataset.val_loader) * dataset.weight
-                )
-            except Exception as e:
-                logging.error(e)
-                return (0.0,)
+            for architecture in self.config.Miner.architectures[dataset.name]:
+
+                model = self.create_model(individual, dataset.name, architecture)
+                try:
+                    self.train(model, train_loader=dataset.train_loader)
+                    fitness += (
+                        self.evaluate(model, val_loader=dataset.val_loader) * dataset.weight * self.config.Miner.architectures_weights[architecture]
+                    )
+                except Exception as e:
+                    logging.error(e)
+                    return (0.0,)
 
         return (fitness,)
 
@@ -327,7 +329,7 @@ class BaseMiner(ABC, PushMixin):
     def mine(self):
         #self.measure_baseline()
         datasets = load_datasets(
-            self.config.Miner.dataset_names, batch_size=self.config.Miner.batch_size
+            self.config.Miner.architectures.keys(), batch_size=self.config.Miner.batch_size
         )
 
         checkpoint_file = os.path.join(LOCAL_STORAGE_PATH, "evolution_checkpoint.pkl")
@@ -438,7 +440,7 @@ class BaseMiner(ABC, PushMixin):
                 f"Generation {generation}: Best fitness = {self.best_solution['fitness']:.4f}"
             )
 
-        return best_individual_all_time
+        return self.best_solution["individual"]
 
     @staticmethod
     def setup_logging(log_file="miner.log"):
@@ -594,7 +596,7 @@ class IslandMiner(BaseMiner):
             local_best_fitness = -float("inf")
             logging.info(f"Island {island_id} starting from scratch")
 
-        datasets = load_datasets(self.config.Miner.dataset_names)
+        datasets = load_datasets(self.config.Miner.architectures.keys())
 
         while generation < self.config.Miner.generations:
             # Evolution step
@@ -933,9 +935,9 @@ class LossMiner(BaseMiner):
         )
         return train_loader, val_loader
 
-    def create_model(self, individual, dataset_name):
+    def create_model(self, individual, dataset_name, architecture):
         set_seed(self.seed)
-        return get_model_for_dataset(dataset_name), self.toolbox.compile(
+        return get_model_for_dataset(dataset_name, architecture), self.toolbox.compile(
             expr=individual
         )
 

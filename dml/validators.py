@@ -2,6 +2,7 @@ import heapq
 import logging
 import os
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -9,6 +10,8 @@ from tqdm import tqdm
 from abc import ABC, abstractmethod
 import time
 import math
+import timm
+import torchvision.models as models
 from requests.exceptions import Timeout
 
 from typing import Any, Dict, Optional, Tuple
@@ -18,7 +21,7 @@ from deap import algorithms, base, creator, tools, gp
 from dml.configs.validator_config import constrained_decay
 from dml.hf_timeout import TimeoutHfApi
 from dml.data import load_datasets
-from dml.models import BaselineNN, EvolvableNN, EvolvedLoss, get_model_for_dataset
+from dml.models import BaselineNN, EvolvableNN, EvolvedLoss, get_model_for_dataset, ModelArchitectureSpec
 from dml.gene_io import load_individual_from_json
 from dml.ops import create_pset_validator
 from dml.record import GeneRecordManager
@@ -136,7 +139,7 @@ class BaseValidator(ABC):
         pass
 
     @abstractmethod
-    def create_model(self, individual):
+    def create_model(self, individual, dataset, architecture):
         pass
 
     @abstractmethod
@@ -146,11 +149,12 @@ class BaseValidator(ABC):
     def evaluate_individual(self, individual, datasets):
         accuracies = []
         for dataset in datasets:
-            model = self.create_model(individual, dataset.name)
-            model[0].to(self.config.device)
-            accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
-            accuracies.append(accuracy)
-            del model
+            for architecture in self.config.Validator.architectures[dataset.name]:
+                model = self.create_model(individual, dataset.name, architecture)
+                model[0].to(self.config.device)
+                accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
+                accuracies.append(accuracy)
+                del model
 
         return torch.tensor(accuracies, device=self.config.device)
 
@@ -218,7 +222,7 @@ class BaseValidator(ABC):
         # Track function signatures for this round
         round_signatures = {}  # {func_signature: (block_number, hotkey)}
         downloaded_genes = {}  # {hotkey: (gene, compiled_func, func_signature)}
-        datasets = load_datasets(self.config.Validator.dataset_names, batch_size=32)
+        datasets = load_datasets(self.config.Validator.architectures.keys(), batch_size=32)
 
         # Single pass: download, collect signatures, and evaluate
         for hotkey_address in self.bittensor_network.metagraph.hotkeys:
@@ -251,6 +255,7 @@ class BaseValidator(ABC):
                 # Verify downloaded gene matches chain hash
                 # compiled_func = self.toolbox.compile(expr=gene[0])
                 compiled_func = gene[1]
+                func_str = gene[2]
                 computed_hash = compute_chain_hash(str(gene[2])+chain_meta["repo"])
                 if computed_hash != chain_meta["hash"]:
                     logging.warning(
@@ -284,7 +289,9 @@ class BaseValidator(ABC):
                     downloaded_genes[hotkey_address] = (
                         gene,
                         compiled_func,
+                        func_str,
                         func_signature,
+                        #FIXME issue in gene reading?
                     )
 
                     if func_signature:
@@ -408,7 +415,8 @@ class BaseValidator(ABC):
                 downloaded_data = downloaded_genes.get(hotkey_address)
 
                 if downloaded_data:
-                    gene, compiled_func, func_signature = downloaded_data
+                    gene, compiled_func, func_str, func_signature = downloaded_data
+                    #FIXME this fails to get the gene for the gene[x]
 
                     # Check for duplicates
                     if func_signature in round_signatures:
@@ -428,7 +436,7 @@ class BaseValidator(ABC):
                             )
                         else:
                             # Evaluate original/unique submissions
-                            accuracy_score = self.evaluate_individual(gene[0], datasets)
+                            accuracy_score = self.evaluate_individual(gene, datasets)
                             accuracy_scores[hotkey_address] = accuracy_score
 
                     # Update gene record
@@ -437,10 +445,10 @@ class BaseValidator(ABC):
                         chain_meta["hash"],
                         chain_meta["block_number"],
                         accuracy_scores[hotkey_address],
-                        expr=gene[0],
+                        expr=gene,
                         repo_name=chain_meta["repo"],
                         func=compiled_func,
-                        gene_string=gene[2],
+                        gene_string=func_str,
                     )
 
         # Score computation and weight setting
@@ -659,9 +667,9 @@ class LossValidator(BaseValidator):
         )
         return train_loader, val_loader
 
-    def create_model(self, individual, dataset_name):
+    def create_model(self, individual, dataset_name, architecture):
 
-        return get_model_for_dataset(dataset_name), self.toolbox.compile(
+        return get_model_for_dataset(dataset_name, architecture), self.toolbox.compile(
             expr=individual
         )
 
@@ -712,33 +720,33 @@ class LossValidator(BaseValidator):
             optimizer.step()
 
     def evaluate(self, model_and_loss, val_loader=None):
-        try:
-            set_seed(self.seed)
-            train_dataloader, val_dataloader = val_loader
-            model, loss_function = model_and_loss
-            model.train()
-            self.train((model, loss_function), train_loader=train_dataloader)
-            model.eval()
-            correct = 0
-            total = 0
-            with torch.no_grad():
-                for idx, (inputs, targets) in enumerate(val_dataloader):
-                    inputs, targets = inputs.to(self.device), targets.to(self.device)
-                    if idx > self.config.Validator.validation_iterations:
-                        break
-                    outputs = model(inputs)
-                    if len(outputs.shape) == 3:
-                        _, predicted = outputs.max(dim=-1)
-                        total += targets.numel()  # Count all elements
-                        correct += predicted.eq(targets).sum().item()
-                    else:
-                        _, predicted = outputs.max(1)
-                        total += targets.size(0)
-                        correct += predicted.eq(targets).sum().item()
-            return correct / total
-        except Exception as e:
-            logging.error(f"EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
-            return 0.0
+        # try:
+        set_seed(self.seed)
+        train_dataloader, val_dataloader = val_loader
+        model, loss_function = model_and_loss
+        model.train()
+        self.train((model, loss_function), train_loader=train_dataloader)
+        model.eval()
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for idx, (inputs, targets) in enumerate(val_dataloader):
+                inputs, targets = inputs.to(self.device), targets.to(self.device)
+                if idx > self.config.Validator.validation_iterations:
+                    break
+                outputs = model(inputs)
+                if len(outputs.shape) == 3:
+                    _, predicted = outputs.max(dim=-1)
+                    total += targets.numel()  # Count all elements
+                    correct += predicted.eq(targets).sum().item()
+                else:
+                    _, predicted = outputs.max(1)
+                    total += targets.size(0)
+                    correct += predicted.eq(targets).sum().item()
+        return correct / total
+        # except Exception as e:
+        #     logging.error(f"EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
+        #     return 0.0
 
     def create_baseline_model(self):
         return (
@@ -753,6 +761,111 @@ class LossValidator(BaseValidator):
         baseline_model, loss = self.create_baseline_model()
         self.base_accuracy = self.evaluate((baseline_model, loss), val_loader)
         logging.info(f"Baseline model accuracy: {self.base_accuracy:.4f}")
+
+class LossValidatorEnhanced(LossValidator):
+    def __init__(self, config):
+        super().__init__(config)
+        self.architectures = self._setup_architectures()
+        self.datasets = load_datasets(config.Validator.architectures.keys())
+        
+    def _setup_architectures(self):
+        """Define standard architectures (ResNet, ViT, FNN) for each dataset"""
+        architectures = {
+            'mnist': [
+                ModelArchitectureSpec(
+                    name="resnet18",
+                    model_fn=lambda: models.resnet18(num_classes=10),
+                    input_size=28*28,
+                    output_size=10
+                ),
+                ModelArchitectureSpec(
+                    name="vit_tiny",
+                    model_fn=lambda: timm.create_model(
+                        'vit_tiny_patch16_224',
+                        num_classes=10,
+                        img_size=28
+                    ),
+                    input_size=28*28,
+                    output_size=10
+                ),
+                ModelArchitectureSpec(
+                    name="fnn",
+                    model_fn=lambda: nn.Sequential(
+                        nn.Flatten(),
+                        nn.Linear(28*28, 512),
+                        nn.ReLU(),
+                        nn.Linear(512, 256),
+                        nn.ReLU(),
+                        nn.Linear(256, 10)
+                    ),
+                    input_size=28*28,
+                    output_size=10
+                )
+            ],
+            'cifar10': [
+                ModelArchitectureSpec(
+                    name="resnet34",
+                    model_fn=lambda: models.resnet34(num_classes=10),
+                    input_size=32*32*3,
+                    output_size=10
+                ),
+                ModelArchitectureSpec(
+                    name="vit_small",
+                    model_fn=lambda: timm.create_model(
+                        'vit_small_patch16_224',
+                        num_classes=10,
+                        img_size=32
+                    ),
+                    input_size=32*32*3,
+                    output_size=10
+                ),
+                ModelArchitectureSpec(
+                    name="fnn",
+                    model_fn=lambda: nn.Sequential(
+                        nn.Flatten(),
+                        nn.Linear(32*32*3, 1024),
+                        nn.ReLU(),
+                        nn.Linear(1024, 512),
+                        nn.ReLU(),
+                        nn.Linear(512, 10)
+                    ),
+                    input_size=32*32*3,
+                    output_size=10
+                )
+            ],
+            'cifar100': [
+                ModelArchitectureSpec(
+                    name="resnet50",
+                    model_fn=lambda: models.resnet50(num_classes=100),
+                    input_size=32*32*3,
+                    output_size=100
+                ),
+                ModelArchitectureSpec(
+                    name="vit_base",
+                    model_fn=lambda: timm.create_model(
+                        'vit_base_patch16_224',
+                        num_classes=100,
+                        img_size=32
+                    ),
+                    input_size=32*32*3,
+                    output_size=100
+                ),
+                ModelArchitectureSpec(
+                    name="fnn",
+                    model_fn=lambda: nn.Sequential(
+                        nn.Flatten(),
+                        nn.Linear(32*32*3, 2048),
+                        nn.ReLU(),
+                        nn.Linear(2048, 1024),
+                        nn.ReLU(),
+                        nn.Linear(1024, 100)
+                    ),
+                    input_size=32*32*3,
+                    output_size=100
+                )
+            ]
+        }
+        return architectures
 
 class OptimizerValidator(BaseValidator):
     def __init__(self, config):
