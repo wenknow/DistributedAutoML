@@ -353,7 +353,6 @@ class BaseMiner(ABC, PushMixin):
             batch_size=self.config.Miner.batch_size,
             seed=self.config.Miner.seed
         )
-        self.measure_baseline(datasets)
 
         checkpoint_file = os.path.join(LOCAL_STORAGE_PATH, "evolution_checkpoint.pkl")
 

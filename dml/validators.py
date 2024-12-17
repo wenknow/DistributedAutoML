@@ -885,8 +885,8 @@ class OptimizerValidator(BaseValidator):
         times = []
         
         for dataset in datasets:
-            if dataset.name not in self.baseline_times:
-                self.measure_baseline(dataset)
+            # if dataset.name not in self.baseline_times:
+            #     self.measure_baseline(dataset)
                 
             model = get_model_for_dataset(dataset.name)
             model.to(self.device)
