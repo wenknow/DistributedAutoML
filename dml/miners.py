@@ -483,6 +483,7 @@ class BaseHuggingFaceMiner(BaseMiner):
                 compute_hash_fn=lambda gene: self.gene_record_manager._compute_function_signature(
                     self.toolbox.compile(expr=gene)
                 ),
+                config=config
             )
         )
 
