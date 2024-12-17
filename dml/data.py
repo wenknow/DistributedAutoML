@@ -366,9 +366,9 @@ def get_imagenette_loaders(
     val_sampler = DeterministicSampler(len(val_dataset))
     
     return (
-        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, worker_init_fn=seed_worker,
+        DataLoader(train_dataset, batch_size=batch_size,  num_workers=num_workers, worker_init_fn=seed_worker,
             sampler=train_sampler),
-        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,worker_init_fn=seed_worker,
+        DataLoader(val_dataset, batch_size=batch_size,  num_workers=num_workers,worker_init_fn=seed_worker,
             sampler=val_sampler)
     )
 
@@ -421,9 +421,9 @@ def get_fgvc_aircraft_loaders(
 
 
     return (
-        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, worker_init_fn=seed_worker,
+        DataLoader(train_dataset, batch_size=batch_size,  num_workers=num_workers, worker_init_fn=seed_worker,
             sampler=train_sampler),
-        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,worker_init_fn=seed_worker,
+        DataLoader(val_dataset, batch_size=batch_size,  num_workers=num_workers,worker_init_fn=seed_worker,
             sampler=val_sampler)
     )
 
@@ -478,9 +478,9 @@ def get_flowers102_loaders(
 
 
     return (
-        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, worker_init_fn=seed_worker,
+        DataLoader(train_dataset, batch_size=batch_size,  num_workers=num_workers, worker_init_fn=seed_worker,
             sampler=train_sampler),
-        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,worker_init_fn=seed_worker,
+        DataLoader(val_dataset, batch_size=batch_size,  num_workers=num_workers,worker_init_fn=seed_worker,
             sampler=val_sampler)
     )
 
