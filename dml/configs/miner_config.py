@@ -8,13 +8,13 @@ class MinerConfig:
     check_registration_interval = 500
     evaluation_iterations = 10
     gp_tree_height = 90
-    generations = 1
+    generations = 100
     migration_interval = 100
     migrants_per_round = 10
-    miner_type = "optimizer"
+    miner_type = "loss"
     num_processes = 1
     pool_url = None #"http://127.0.0.1:5000"
-    population_size = 100 # Per process pop = population_size // num_processes
+    population_size = 50 # Per process pop = population_size // num_processes
     push_platform = "hf"
     save_temp_only = True
     seed = int(time.time())
@@ -26,8 +26,10 @@ class MinerConfig:
         "flowers102": ["resnet", "mobilenet_v3", "efficientnet_v2"]
     }
     architectures_weights = {
-        "cifar100":0.333,
-        "imagenet":0.333,
-        "flowers102":0.333
+        "mlp":0.25,
+        "resnet":0.25,
+        "efficientnet_v2":0.25,
+        "mobilenet_v3":0.25,
     }
+
 

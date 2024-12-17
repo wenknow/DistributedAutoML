@@ -128,14 +128,17 @@ class BaseMiner(ABC, PushMixin):
             commit_message = f"{generation}_{individual.fitness.values[0]:.4f}"
 
             # Attempt the push
-            super().push_to_remote(individual, commit_message)
+            success = super().push_to_remote(individual, commit_message)
 
-            # Update tracking on success
-            self.last_push_attempt = current_time
-            self.last_push_success = True
-            self.best_solution["pushed"] = True
-            self.best_solution["push_attempts"] = 0  # Reset attempts counter
-            logging.info(f"Successfully pushed solution at generation {generation}")
+            if success:
+                # Update tracking on success
+                self.last_push_attempt = current_time
+                self.last_push_success = True
+                self.best_solution["pushed"] = True
+                self.best_solution["push_attempts"] = 0  # Reset attempts counter
+                logging.info(f"Successfully pushed solution at generation {generation}")
+            else:
+                raise MetadataError("Failed Push - Reason unknown")
 
         except MetadataError as e:
             # Update tracking on failure
@@ -306,6 +309,7 @@ class BaseMiner(ABC, PushMixin):
             for architecture in self.config.Miner.architectures[dataset.name]:
 
                 model = self.create_model(individual, dataset.name, architecture)
+                model[0].to(self.config.device)
                 try:
                     self.train(model, train_loader=dataset.train_loader)
                     fitness += (

@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch 
 from torch.optim import Optimizer
 import torchvision.models as models
-from dml.data import load_datasets
+from dml.data import load_datasets, dataset_configs
 
 
 
@@ -254,7 +254,7 @@ def get_model_for_dataset(dataset_name: str, architecture: str = 'mlp', dataset_
     
     if dataset_spec is None:
         # Get dataset spec if not provided
-        dataset_spec = load_datasets([dataset_name])[0]
+        dataset_spec = dataset_configs[dataset_name]
     
     # Get the appropriate model creator
     model_creator = ARCHITECTURE_MAP[architecture]
@@ -262,33 +262,33 @@ def get_model_for_dataset(dataset_name: str, architecture: str = 'mlp', dataset_
     # Configure architecture-specific parameters
     if architecture == 'mlp':
         return model_creator(
-            input_size=dataset_spec.input_size,
-            output_size=dataset_spec.output_size,
-            hidden_size=dataset_spec.hidden_size,
+            input_size=dataset_spec["input_size"],
+            output_size=dataset_spec["output_size"],
             **kwargs
         )
     elif architecture == 'cnn':
         # Assume image data with channels
-        if isinstance(dataset_spec.input_size, tuple):
-            input_channels = dataset_spec.input_size[0]
+        if isinstance(dataset_spec["input_size"], tuple):
+            input_channels = dataset_spec["input_size"][0]
         else:
             input_channels = 1  # Default to single channel
         return model_creator(
             input_channels=input_channels,
-            output_size=dataset_spec.output_size,
+            output_size=dataset_spec["output_size"],
             **kwargs
         )
     elif architecture == 'gpt':
         return model_creator(
-            vocab_size=dataset_spec.output_size,
-            embed_size=dataset_spec.hidden_size,
+            vocab_size=dataset_spec["output_size"],
+            embed_size=dataset_spec["hidden_size"],
             **kwargs
         )
     else:  # resnet or other architectures
         return model_creator(
-            num_classes=dataset_spec.output_size,
+            num_classes=dataset_spec["output_size"],
             **kwargs
         )
+
 
 class TorchEvolvedOptimizer(Optimizer):
    def __init__(self, params, evolved_func, lr=1e-3, weight_decay=0):

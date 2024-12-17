@@ -49,9 +49,10 @@ class ValidatorConfig:
         "fgvc_aircraft": ["resnet", "mobilenet_v3", "efficientnet_v2"]
     }
     architectures_weights = {
-        "cifar100":0.333,
-        "imagenet":0.333,
-        "fgvc_aircraft":0.333
+        "mlp":0.25,
+        "resnet":0.25,
+        "efficientnet_v2":0.25,
+        "mobilenet_v3":0.25,
     }
 
     seed = 42

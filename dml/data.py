@@ -5,6 +5,21 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 from typing import Any, List, Tuple, Optional, Union
 import os 
+import requests
+import tarfile
+
+def download_imagenette():
+    url = "https://s3.amazonaws.com/fast-ai-imageclas/imagenette2.tgz"
+    if not os.path.exists('./data/imagenette2'):
+        response = requests.get(url, stream=True)
+        with open('./data/imagenette2.tgz', 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        
+        with tarfile.open('./data/imagenette2.tgz', 'r:gz') as tar:
+            tar.extractall(path='./data')
+        
+        os.remove('./data/imagenette2.tgz')
 
 @dataclass
 class DatasetSpec:
@@ -268,7 +283,9 @@ def get_imagenette_loaders(
             std=[0.229, 0.224, 0.225]
         )
     ])
-    
+
+    download_imagenette()
+
     # Imagenette uses ImageFolder since it's structured like ImageNet
     train_dataset = datasets.ImageFolder(
         './data/imagenette2/train',
@@ -332,6 +349,8 @@ def get_fgvc_aircraft_loaders(
         DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     )
 
+
+
 def get_flowers102_loaders(
     batch_size: int = 32,
     num_workers: int = 2
@@ -379,23 +398,8 @@ def get_flowers102_loaders(
         DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     )
 
-def load_datasets(dataset_names: Union[str, List[str]], batch_size: int = 32) -> List[DatasetSpec]:
-    """
-    Load specified datasets based on input names.
-    
-    Args:
-        dataset_names: Single dataset name or list of dataset names
-        batch_size: Batch size for data loaders
-    
-    Returns:
-        List of DatasetSpec objects for requested datasets
-    """
-    # Convert single string to list for consistent processing
-    if isinstance(dataset_names, str):
-        dataset_names = [dataset_names]
-    
-    # Dictionary mapping dataset names to their loader functions and specs
-    dataset_configs = {
+
+dataset_configs = {
         "mnist": {
             "loader": get_mnist_loaders,
             "input_size": 28*28,
@@ -451,6 +455,24 @@ def load_datasets(dataset_names: Union[str, List[str]], batch_size: int = 32) ->
             "learning_rate": 0.01
         }
     }
+
+def load_datasets(dataset_names: Union[str, List[str]], batch_size: int = 32) -> List[DatasetSpec]:
+    """
+    Load specified datasets based on input names.
+    
+    Args:
+        dataset_names: Single dataset name or list of dataset names
+        batch_size: Batch size for data loaders
+    
+    Returns:
+        List of DatasetSpec objects for requested datasets
+    """
+    # Convert single string to list for consistent processing
+    if isinstance(dataset_names, str):
+        dataset_names = [dataset_names]
+    
+    # Dictionary mapping dataset names to their loader functions and specs
+    
 
     
     dataset_specs = []

@@ -10,7 +10,7 @@ from tqdm import tqdm
 from abc import ABC, abstractmethod
 import time
 import math
-import timm
+
 import torchvision.models as models
 from requests.exceptions import Timeout
 
@@ -216,6 +216,7 @@ class BaseValidator(ABC):
             logging.info("This validator is no longer registered on the chain.")
             return
 
+        evaluations_count = len([model for models in self.config.Validator.architectures.values() for model in models])
         # Cache chain metadata at start of validation round
         self.cache_chain_metadata()
 
@@ -230,7 +231,7 @@ class BaseValidator(ABC):
             chain_meta = self.chain_metadata_cache.get(hotkey_address)
             if not chain_meta:
                 accuracy_scores[hotkey_address] = torch.zeros(
-                    (len(self.config.Validator.dataset_names),),
+                    (evaluations_count,),
                     device=self.config.device,
                 )
                 continue
@@ -247,13 +248,14 @@ class BaseValidator(ABC):
                 gene = self.receive_gene_from_hf(chain_meta["repo"])
                 if gene is None:
                     accuracy_scores[hotkey_address] = torch.zeros(
-                        (len(self.config.Validator.dataset_names),),
+                        (evaluations_count,),
                         device=self.config.device,
                     )
                     continue
 
                 # Verify downloaded gene matches chain hash
                 # compiled_func = self.toolbox.compile(expr=gene[0])
+                deap_gene = gene[0]
                 compiled_func = gene[1]
                 func_str = gene[2]
                 computed_hash = compute_chain_hash(str(gene[2])+chain_meta["repo"])
@@ -262,7 +264,7 @@ class BaseValidator(ABC):
                         f"Chain hash mismatch for {hotkey_address} gene {gene[2]} expected {chain_meta['hash']} found {computed_hash}"
                     )
                     accuracy_scores[hotkey_address] = torch.zeros(
-                        (len(self.config.Validator.dataset_names),),
+                        (evaluations_count,),
                         device=self.config.device,
                     )
                     continue
@@ -274,7 +276,7 @@ class BaseValidator(ABC):
                         f"Repo hotkey mismatch for {hotkey_address} and hotkey {gene[3]}"
                     )
                     accuracy_scores[hotkey_address] = torch.zeros(
-                        (len(self.config.Validator.dataset_names),),
+                        (evaluations_count,),
                         device=self.config.device,
                     )
                     continue   
@@ -287,7 +289,7 @@ class BaseValidator(ABC):
                         )
                     )
                     downloaded_genes[hotkey_address] = (
-                        gene,
+                        deap_gene,
                         compiled_func,
                         func_str,
                         func_signature,
@@ -315,7 +317,7 @@ class BaseValidator(ABC):
                                     f"Duplicate found. {existing_hotkey} is copying the gene used by {hotkey_address}"
                                 )
                                 accuracy_scores[existing_hotkey] = torch.zeros(
-                                    (len(self.config.Validator.dataset_names),),
+                                    (evaluations_count,),
                                     device=self.config.device,
                                 )
                                 continue
@@ -325,7 +327,7 @@ class BaseValidator(ABC):
                                     f"Duplicate found. {hotkey_address} receives 0 score"
                                 )
                                 accuracy_scores[hotkey_address] = torch.zeros(
-                                    (len(self.config.Validator.dataset_names),),
+                                    (evaluations_count,),
                                     device=self.config.device,
                                 )
                                 continue
@@ -334,7 +336,7 @@ class BaseValidator(ABC):
                             f"Failed to calculate the gene fingerprint {hotkey_address}"
                         )
                         accuracy_scores[hotkey_address] = torch.zeros(
-                            (len(self.config.Validator.dataset_names),),
+                            (evaluations_count,),
                             device=self.config.device,
                         )
                         continue
@@ -344,7 +346,7 @@ class BaseValidator(ABC):
                         f"Failed to calculate the gene fingerprint {hotkey_address}"
                     )
                     accuracy_scores[hotkey_address] = torch.zeros(
-                        (len(self.config.Validator.dataset_names),),
+                        (evaluations_count,),
                         device=self.config.device,
                     )
                     continue
@@ -371,7 +373,7 @@ class BaseValidator(ABC):
                                     hotkey_address,
                                 )
                                 accuracy_scores[existing_hotkey] = torch.zeros(
-                                    (len(self.config.Validator.dataset_names),),
+                                    (evaluations_count,),
                                     device=self.config.device,
                                 )
                                 logging.info(
@@ -379,7 +381,7 @@ class BaseValidator(ABC):
                                 )
                             else:
                                 accuracy_scores[hotkey_address] = torch.zeros(
-                                    (len(self.config.Validator.dataset_names),),
+                                    (evaluations_count,),
                                     device=self.config.device,
                                 )
                                 logging.info(
@@ -396,7 +398,7 @@ class BaseValidator(ABC):
                         f"{hotkey_address} is a cached failed gene. Assigning zero"
                     )
                     accuracy_scores[hotkey_address] = torch.zeros(
-                        (len(self.config.Validator.dataset_names),),
+                        (evaluations_count,),
                         device=self.config.device,
                     )
 
@@ -431,7 +433,7 @@ class BaseValidator(ABC):
                                 f"Duplicate function from {hotkey_address}. Original at block {earliest_block} by {original_hotkey}"
                             )
                             accuracy_scores[hotkey_address] = torch.zeros(
-                                (len(self.config.Validator.dataset_names),),
+                                (evaluations_count,),
                                 device=self.config.device,
                             )
                         else:
@@ -668,10 +670,10 @@ class LossValidator(BaseValidator):
         return train_loader, val_loader
 
     def create_model(self, individual, dataset_name, architecture):
-
         return get_model_for_dataset(dataset_name, architecture), self.toolbox.compile(
             expr=individual
         )
+        
 
     @staticmethod
     def safe_evaluate(func, outputs, labels):
