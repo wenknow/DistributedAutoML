@@ -155,8 +155,11 @@ class BaseValidator(ABC):
                 accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
                 accuracies.append(accuracy)
                 del model
-
-        return torch.tensor(accuracies, device=self.config.device)
+        accs = torch.tensor(accuracies, device=self.config.device)
+        avg_acc = accs.mean()
+        normalized_std = 1 - (accs.std()/avg_acc)
+        final_acc = 0.7 * avg_acc + 0.3 * normalized_std
+        return final_acc
 
     def compute_ranks(self, filtered_scores_dict):
         """
@@ -216,7 +219,7 @@ class BaseValidator(ABC):
             logging.info("This validator is no longer registered on the chain.")
             return
 
-        evaluations_count = len([model for models in self.config.Validator.architectures.values() for model in models])
+        evaluations_count = 1#New method#len([model for models in self.config.Validator.architectures.values() for model in models])
         # Cache chain metadata at start of validation round
         self.cache_chain_metadata()
 
@@ -478,10 +481,10 @@ class BaseValidator(ABC):
 
             if len(filtered_scores_dict) > 0:
                              
-                avg_ranks, detailed_ranks = self.compute_ranks(filtered_scores_dict)
+                #avg_ranks, detailed_ranks = self.compute_ranks(filtered_scores_dict)
 
                 # Sort hotkeys by average rank
-                sorted_hotkeys = sorted(avg_ranks.keys(), key=lambda h: avg_ranks[h])
+                sorted_hotkeys = sorted(filtered_scores_dict.keys(), key=lambda h: filtered_scores_dict[h])
 
                 # Initialize scores dict
                 self.scores = {h: 0.0 for h in self.bittensor_network.metagraph.hotkeys}
@@ -506,7 +509,7 @@ class BaseValidator(ABC):
                             logging.info(f"Miner {hotkey}:")
                             logging.info(f"  Final score: {self.scores[hotkey]:.4f}")
                             logging.info(f"  Raw accuracies: {accuracy_scores[hotkey]}")
-                            logging.info(f"  Average rank: {avg_ranks[hotkey]:.2f}")
+                            #logging.info(f"  Average rank: {avg_ranks[hotkey]:.2f}")
                         except:
                             pass
 
