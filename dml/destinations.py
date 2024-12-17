@@ -39,7 +39,6 @@ class HuggingFacePushDestination(PushDestination):
             return
 
         # Create a temporary file to store the gene data
-        breakpoint()
         if save_temp: 
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
                 json.dump(save_individual_to_json(gene, hotkey=config.bittensor_network.wallet.hotkey.ss58_address), temp_file)
