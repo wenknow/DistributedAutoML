@@ -321,7 +321,8 @@ def get_shakespeare_loaders(
 
 def get_imagenette_loaders(
     batch_size: int = 32,
-    num_workers: int = 2
+    num_workers: int = 2,
+    seed: int = 42
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Imagenette dataset loaders with standard augmentation.
@@ -360,15 +361,21 @@ def get_imagenette_loaders(
         './data/imagenette2/val',
         transform=val_transform
     )
+    set_seed(seed)
+    train_sampler = DeterministicSampler(len(train_dataset))
+    val_sampler = DeterministicSampler(len(val_dataset))
     
     return (
-        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers),
-        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, worker_init_fn=seed_worker,
+            sampler=train_sampler),
+        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,worker_init_fn=seed_worker,
+            sampler=val_sampler)
     )
 
 def get_fgvc_aircraft_loaders(
     batch_size: int = 32,
-    num_workers: int = 2
+    num_workers: int = 2,
+    seed: int = 42
 ) -> Tuple[DataLoader, DataLoader]:
     """
     FGVC Aircraft dataset loaders with standard augmentation
@@ -408,16 +415,24 @@ def get_fgvc_aircraft_loaders(
         transform=val_transform
     )
     
+    set_seed(seed)
+    train_sampler = DeterministicSampler(len(train_dataset))
+    val_sampler = DeterministicSampler(len(val_dataset))
+
+
     return (
-        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers),
-        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, worker_init_fn=seed_worker,
+            sampler=train_sampler),
+        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,worker_init_fn=seed_worker,
+            sampler=val_sampler)
     )
 
 
 
 def get_flowers102_loaders(
     batch_size: int = 32,
-    num_workers: int = 2
+    num_workers: int = 2,
+    seed: int = 42
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Oxford Flowers-102 dataset loaders with standard augmentation
@@ -457,9 +472,16 @@ def get_flowers102_loaders(
         transform=val_transform
     )
     
+    set_seed(seed)
+    train_sampler = DeterministicSampler(len(train_dataset))
+    val_sampler = DeterministicSampler(len(val_dataset))
+
+
     return (
-        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers),
-        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, worker_init_fn=seed_worker,
+            sampler=train_sampler),
+        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,worker_init_fn=seed_worker,
+            sampler=val_sampler)
     )
 
 
