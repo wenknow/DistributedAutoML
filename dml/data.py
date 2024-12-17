@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from dml.utils import set_seed
 import requests
 import torch
 from torch.utils.data import DataLoader, Dataset, Sampler
@@ -519,7 +520,7 @@ dataset_configs = {
         }
     }
 
-def load_datasets(dataset_names: Union[str, List[str]], batch_size: int = 32) -> List[DatasetSpec]:
+def load_datasets(dataset_names: Union[str, List[str]], batch_size: int = 32, seed=42) -> List[DatasetSpec]:
     """
     Load specified datasets based on input names.
     

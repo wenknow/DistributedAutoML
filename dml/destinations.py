@@ -32,7 +32,7 @@ class HuggingFacePushDestination(PushDestination):
         self.repo_name = repo_name
         self.api = HfApi(token=config.hf_token)
 
-    def push(self, gene, commit_message, save_temp = config.Miner.save_temp_only):
+    def push(self, gene, commit_message, config, save_temp = config.Miner.save_temp_only):
 
         if not self.repo_name:
             logging.info("No Hugging Face repository name provided. Skipping push to Hugging Face.")
@@ -41,7 +41,7 @@ class HuggingFacePushDestination(PushDestination):
         # Create a temporary file to store the gene data
         if save_temp: 
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
-                json.dump(save_individual_to_json(gene, hotkey=config.wallet.hotkey), temp_file)
+                json.dump(save_individual_to_json(gene, hotkey=config.bittensor_network.wallet.hotkey), temp_file)
                 temp_file_path = temp_file.name
 
         else:
@@ -52,7 +52,7 @@ class HuggingFacePushDestination(PushDestination):
                 f"{commit_message.replace('.', '_')}.json"
             )
             with open(temp_file_path, 'w') as temp_file:
-                json.dump(save_individual_to_json(gene, hotkey=config.wallet.hotkey), temp_file)
+                json.dump(save_individual_to_json(gene, hotkey=config.bittensor_network.wallet.hotkey), temp_file)
 
         try:
             # if not os.path.exists(self.repo_name):
@@ -126,10 +126,10 @@ class ChainPushDestination(PushDestination):
             
 
 class HFChainPushDestination(HuggingFacePushDestination):
-    def __init__(self, repo_name, chain_manager, **kwargs):
+    def __init__(self, repo_name, chain_manager, config, **kwargs):
         super().__init__(repo_name)
         self.chain_push = ChainPushDestination(chain_manager)
-
+        self.config = config
     def push(self, gene, commit_message, save_temp=config.Miner.save_temp_only):
         # First push to HuggingFace
         
@@ -138,6 +138,7 @@ class HFChainPushDestination(HuggingFacePushDestination):
 
         if success:
             logging.info("Chain push likely successful. Attempting to push to HF")
-            super().push(gene, commit_message, save_temp)
+            super().push(gene, commit_message, config, save_temp)
         else:
+            super().push(gene, commit_message, config, save_temp)
             logging.warn("Chain push unsuccessful. Failed to push gene !")
