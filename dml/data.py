@@ -8,6 +8,8 @@ from typing import Any, List, Tuple, Optional, Union
 import os 
 import requests
 import tarfile
+import numpy as np
+import random 
 
 def download_imagenette():
     url = "https://s3.amazonaws.com/fast-ai-imageclas/imagenette2.tgz"
