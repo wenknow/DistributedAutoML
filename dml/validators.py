@@ -147,6 +147,7 @@ class BaseValidator(ABC):
         pass
 
     def evaluate_individual(self, individual, datasets):
+        set_seed(self.seed)
         accuracies = []
         for dataset in datasets:
             for architecture in self.config.Validator.architectures[dataset.name]:
@@ -408,7 +409,7 @@ class BaseValidator(ABC):
                 # Keep cached score
                 logging.info(f"{hotkey_address} using cached score")
                 accuracy_scores[hotkey_address] = torch.tensor(
-                    existing_record["performance"], device=self.config.device
+                    existing_record["performance"], device=self.device
                 )
 
         # Process all genes and check for duplicates
