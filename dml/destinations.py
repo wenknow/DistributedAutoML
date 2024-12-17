@@ -141,5 +141,4 @@ class HFChainPushDestination(HuggingFacePushDestination):
             logging.info("Chain push likely successful. Attempting to push to HF")
             super().push(gene, commit_message, config, save_temp)
         else:
-            super().push(gene, commit_message, config, save_temp)
             logging.warn("Chain push unsuccessful. Failed to push gene !")
