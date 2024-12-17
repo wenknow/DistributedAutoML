@@ -39,9 +39,10 @@ class HuggingFacePushDestination(PushDestination):
             return
 
         # Create a temporary file to store the gene data
+        breakpoint()
         if save_temp: 
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
-                json.dump(save_individual_to_json(gene, hotkey=config.bittensor_network.wallet.hotkey), temp_file)
+                json.dump(save_individual_to_json(gene, hotkey=config.bittensor_network.wallet.hotkey.ss58_address), temp_file)
                 temp_file_path = temp_file.name
 
         else:
@@ -52,7 +53,7 @@ class HuggingFacePushDestination(PushDestination):
                 f"{commit_message.replace('.', '_')}.json"
             )
             with open(temp_file_path, 'w') as temp_file:
-                json.dump(save_individual_to_json(gene, hotkey=config.bittensor_network.wallet.hotkey), temp_file)
+                json.dump(save_individual_to_json(gene, hotkey=config.bittensor_network.wallet.hotkey.ss58_address), temp_file)
 
         try:
             # if not os.path.exists(self.repo_name):
@@ -130,6 +131,7 @@ class HFChainPushDestination(HuggingFacePushDestination):
         super().__init__(repo_name)
         self.chain_push = ChainPushDestination(chain_manager)
         self.config = config
+
     def push(self, gene, commit_message, save_temp=config.Miner.save_temp_only):
         # First push to HuggingFace
         
