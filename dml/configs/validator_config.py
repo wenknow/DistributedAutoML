@@ -11,7 +11,7 @@ def constrained_decay(n: int, ratio: float = 5.0):
 class ValidatorConfig:
     device = "cuda"
 
-    validation_interval = 20
+    validation_interval = 2000
     validator_type = "loss"
     top_k = 50
     min_score = 0.0
