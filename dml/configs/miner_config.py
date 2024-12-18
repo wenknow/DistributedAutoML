@@ -25,11 +25,11 @@ class MinerConfig:
         "imagenette": [ "resnet", "mobilenet_v3", "efficientnet_v2" ],
         "flowers102": ["resnet", "mobilenet_v3", "efficientnet_v2"]
     }
-    architectures_weights = {
-        "mlp":0.25,
-        "resnet":0.25,
-        "efficientnet_v2":0.25,
-        "mobilenet_v3":0.25,
-    }
+    # architectures_weights = {
+    #     "mlp":0.25,
+    #     "resnet":0.25,
+    #     "efficientnet_v2":0.25,
+    #     "mobilenet_v3":0.25,
+    # }
 
 
