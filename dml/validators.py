@@ -212,10 +212,53 @@ class BaseValidator(ABC):
         self.base_accuracy = self.evaluate(baseline_model, val_loader)
         logging.info(f"Baseline model accuracy: {self.base_accuracy:.4f}")
 
+    def calculate_topk_scores(self, score_dict: Dict[str, float], all_hotkeys: list) -> Dict[str, float]:
+        """
+        Calculate normalized top-k scores for miners.
+        
+        Args:
+            score_dict (Dict[str, float]): Dictionary of scores for each miner
+            all_hotkeys (list): List of all hotkeys to include in final dict (ensures consistent shape)
+            
+        Returns:
+            Dict[str, float]: Normalized scores dictionary with top-k weights applied
+        """
+        # Filter out zero scores
+        filtered_scores = {k: v for k, v in score_dict.items() if v != 0.0}
+        
+        # Initialize scores dict with all hotkeys
+        final_scores = {h: 0.0 for h in all_hotkeys}
+        
+        if filtered_scores:
+            # Sort hotkeys by scores
+            sorted_hotkeys = sorted(filtered_scores.keys(),
+                                  key=lambda h: filtered_scores[h],
+                                  reverse=True)
+            
+            # Assign top-k weights
+            top_k = self.config.Validator.top_k
+            top_k_weights = self.config.Validator.top_k_weight
+            
+            for i, hotkey in enumerate(sorted_hotkeys[:top_k]):
+                if i < len(top_k_weights):
+                    final_scores[hotkey] = top_k_weights[i]
+            
+            # Normalize scores
+            total_weight = sum(final_scores.values())
+            if total_weight > 0:
+                final_scores = {k: v / total_weight for k, v in final_scores.items()}
+        
+        return final_scores
+
     def validate_and_score(self):
+        self.bittensor_network.set_weights(None)
         self.scores = {}
         accuracy_scores = {}
         set_seed(self.seed)
+
+        start_time = time.time()
+        WEIGHT_SET_TIMEOUT = 1800  # 30 minutes in seconds
+        last_weight_set = start_time
 
         logging.info("Receiving genes from chain")
         self.bittensor_network.sync(lite=True)
@@ -233,15 +276,38 @@ class BaseValidator(ABC):
         downloaded_genes = {}  # {hotkey: (gene, compiled_func, func_signature)}
         datasets = load_datasets(self.config.Validator.architectures.keys(), batch_size=32)
 
+        temp_scores = {h: 0.0 for h in self.bittensor_network.metagraph.hotkeys}
+        validated_miners = set()
+
+        all_hotkeys = self.bittensor_network.metagraph.hotkeys
         # Single pass: download, collect signatures, and evaluate
         for hotkey_address in self.bittensor_network.metagraph.hotkeys:
+            logging.info(f"Checking hotkey {hotkey_address}")
+            current_time = time.time()
+            
+            # Check if we need to set weights due to timeout
+            if current_time - last_weight_set >= WEIGHT_SET_TIMEOUT:
+                logging.warning("30-minute threshold reached. Setting intermediate weights.")
+                
+                # Set intermediate weights using top-k approach
+                if validated_miners:
+                    filtered_temp_scores = {k: v for k, v in temp_scores.items() 
+                                         if k in validated_miners}
+                    
+                    intermediate_scores = self.calculate_topk_scores(
+                        filtered_temp_scores, 
+                        filtered_temp_scores.keys()
+                    )
+
+                    #if self.bittensor_network.should_set_weights():
+                    self.bittensor_network.set_weights(intermediate_scores)
+                    logging.info("Intermediate weights set successfully!")
+                
+                last_weight_set = current_time
 
             chain_meta = self.chain_metadata_cache.get(hotkey_address)
             if not chain_meta:
-                accuracy_scores[hotkey_address] = torch.zeros(
-                    (evaluations_count,),
-                    device=self.config.device,
-                )
+                accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                 continue
 
             should_download = False
@@ -255,10 +321,7 @@ class BaseValidator(ABC):
             if should_download:
                 gene = self.receive_gene_from_hf(chain_meta["repo"])
                 if gene is None:
-                    accuracy_scores[hotkey_address] = torch.zeros(
-                        (evaluations_count,),
-                        device=self.config.device,
-                    )
+                    accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                     continue
 
                 # Verify downloaded gene matches chain hash
@@ -271,10 +334,7 @@ class BaseValidator(ABC):
                     logging.warning(
                         f"Chain hash mismatch for {hotkey_address} gene {gene[2]} expected {chain_meta['hash']} found {computed_hash}"
                     )
-                    accuracy_scores[hotkey_address] = torch.zeros(
-                        (evaluations_count,),
-                        device=self.config.device,
-                    )
+                    accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                     continue
 
                 # Verify downloaded gene's repo id matches chain hotkey
@@ -283,10 +343,7 @@ class BaseValidator(ABC):
                     logging.warning(
                         f"Repo hotkey mismatch for {hotkey_address} and hotkey {gene[3]}"
                     )
-                    accuracy_scores[hotkey_address] = torch.zeros(
-                        (evaluations_count,),
-                        device=self.config.device,
-                    )
+                    accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                     continue   
                     
 
@@ -324,39 +381,27 @@ class BaseValidator(ABC):
                                 logging.warning(
                                     f"Duplicate found. {existing_hotkey} is copying the gene used by {hotkey_address}"
                                 )
-                                accuracy_scores[existing_hotkey] = torch.zeros(
-                                    (evaluations_count,),
-                                    device=self.config.device,
-                                )
+                                accuracy_scores[existing_hotkey] = torch.tensor(0.0, device=self.config.device)
                                 continue
 
                             else:
                                 logging.warning(
                                     f"Duplicate found. {hotkey_address} receives 0 score"
                                 )
-                                accuracy_scores[hotkey_address] = torch.zeros(
-                                    (evaluations_count,),
-                                    device=self.config.device,
-                                )
+                                accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                                 continue
                     else:
                         logging.warning(
                             f"Failed to calculate the gene fingerprint {hotkey_address}"
                         )
-                        accuracy_scores[hotkey_address] = torch.zeros(
-                            (evaluations_count,),
-                            device=self.config.device,
-                        )
+                        accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                         continue
 
                 except:
                     logging.warning(
                         f"Failed to calculate the gene fingerprint {hotkey_address}"
                     )
-                    accuracy_scores[hotkey_address] = torch.zeros(
-                        (evaluations_count,),
-                        device=self.config.device,
-                    )
+                    accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                     continue
 
             else:
@@ -380,18 +425,12 @@ class BaseValidator(ABC):
                                     existing_record["block_number"],
                                     hotkey_address,
                                 )
-                                accuracy_scores[existing_hotkey] = torch.zeros(
-                                    (evaluations_count,),
-                                    device=self.config.device,
-                                )
+                                accuracy_scores[existing_hotkey] = torch.tensor(0.0, device=self.config.device)
                                 logging.info(
                                     f"Existing record by {existing_hotkey} copying from {hotkey_address}. Fixing."
                                 )
                             else:
-                                accuracy_scores[hotkey_address] = torch.zeros(
-                                    (evaluations_count,),
-                                    device=self.config.device,
-                                )
+                                accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                                 logging.info(
                                     f"Existing record by {hotkey_address} is a duplicate "
                                 )
@@ -405,16 +444,20 @@ class BaseValidator(ABC):
                     logging.info(
                         f"{hotkey_address} is a cached failed gene. Assigning zero"
                     )
-                    accuracy_scores[hotkey_address] = torch.zeros(
-                        (evaluations_count,),
-                        device=self.config.device,
-                    )
+                    accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
+                
 
                 # Keep cached score
                 logging.info(f"{hotkey_address} using cached score")
                 accuracy_scores[hotkey_address] = torch.tensor(
                     existing_record["performance"], device=self.device
                 )
+            
+            if hotkey_address not in validated_miners:
+                validated_miners.add(hotkey_address)
+                # Update temporary scores based on current validation results
+                if hotkey_address in accuracy_scores:
+                    temp_scores[hotkey_address] = float(accuracy_scores[hotkey_address])
 
         # Process all genes and check for duplicates
         for hotkey_address in self.bittensor_network.metagraph.hotkeys:
@@ -423,7 +466,30 @@ class BaseValidator(ABC):
             ):  # Skip if already processed (cached or failed)
                 chain_meta = self.chain_metadata_cache[hotkey_address]
                 downloaded_data = downloaded_genes.get(hotkey_address)
-
+                
+                current_time = time.time()
+                
+                if current_time - last_weight_set >= WEIGHT_SET_TIMEOUT:
+                    logging.warning("30-minute threshold reached. Setting intermediate weights.")
+                    
+                    # Set intermediate weights using top-k approach
+                    if validated_miners:
+                        filtered_temp_scores = {k: v for k, v in temp_scores.items() 
+                                            if k in validated_miners}
+                        
+                        intermediate_scores = self.calculate_topk_scores(
+                            filtered_temp_scores, 
+                            filtered_temp_scores.keys()
+                        )
+                        logging.info(f"Filtered temp scores: {filtered_temp_scores}")
+                        #if self.bittensor_network.should_set_weights():
+                        self.bittensor_network.set_weights(intermediate_scores)
+                        logging.info("Intermediate weights set successfully!")
+                    
+                    last_weight_set = current_time
+                
+                logging.info(f"Evaluating Hotkey {hotkey_address}")
+                
                 if downloaded_data:
                     gene, compiled_func, func_str, func_signature = downloaded_data
                     #FIXME this fails to get the gene for the gene[x]
@@ -440,10 +506,7 @@ class BaseValidator(ABC):
                             logging.warning(
                                 f"Duplicate function from {hotkey_address}. Original at block {earliest_block} by {original_hotkey}"
                             )
-                            accuracy_scores[hotkey_address] = torch.zeros(
-                                (evaluations_count,),
-                                device=self.config.device,
-                            )
+                            accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                         else:
                             # Evaluate original/unique submissions
                             try:
@@ -465,69 +528,26 @@ class BaseValidator(ABC):
                         func=compiled_func,
                         gene_string=func_str,
                     )
+            
+            if hotkey_address not in validated_miners:
+                validated_miners.add(hotkey_address)
+                # Update temporary scores based on current validation results
+                if hotkey_address in accuracy_scores:
+                    temp_scores[hotkey_address] = float(accuracy_scores[hotkey_address])
+
 
         # Score computation and weight setting
 
         if accuracy_scores:
             #if len(accuracy_scores) > 0:
-            top_k = self.config.Validator.top_k
-            top_k_weights = self.config.Validator.top_k_weight
-            logging.info(f"Accuracy Scores: {accuracy_scores}")
+            float_scores = {k: v for k, v in filtered_scores_dict.items()}
+                
+            # Calculate final scores using top-k approach
+            self.scores = self.calculate_topk_scores(float_scores, all_hotkeys)
 
-            filtered_scores_dict = {}
-
-            # Iterate over each key-value pair in the original dictionary
-            for k, v in accuracy_scores.items():
-                if isinstance(v, torch.Tensor):
-                    # For tensors, check if the sum is zero
-                    is_zero = torch.sum(v) == 0.0
-                else:
-                    # For non-tensors, check if the value is exactly 0.0
-                    is_zero = (v == 0.0) if isinstance(v, (int, float)) else False
-
-                # Only add the item to the new dictionary if it’s not zero
-                if not is_zero:
-                    filtered_scores_dict[k] = v
-
-            if len(filtered_scores_dict) > 0:
-                             
-                #avg_ranks, detailed_ranks = self.compute_ranks(filtered_scores_dict)
-
-                # Sort hotkeys by average rank
-                sorted_hotkeys = sorted(filtered_scores_dict.keys(), key=lambda h: filtered_scores_dict[h])
-
-                # Initialize scores dict
-                self.scores = {h: 0.0 for h in self.bittensor_network.metagraph.hotkeys}
-
-                # Assign top-k weights to best performing miners
-                for i, hotkey in enumerate(sorted_hotkeys[:top_k]):
-                    if i < len(top_k_weights):
-                        self.scores[hotkey] = top_k_weights[i]
-
-                total_weight = sum(self.scores.values())
-
-                logging.info(f"Pre-normalization scores: {self.scores}")
-
-                if total_weight > 0:
-                    self.scores = {k: v / total_weight for k, v in self.scores.items()}
-
-                # Log performance details
-                for hotkey in accuracy_scores:
-                    if self.scores[hotkey] > 0:
-
-                        try:
-                            logging.info(f"Miner {hotkey}:")
-                            logging.info(f"  Final score: {self.scores[hotkey]:.4f}")
-                            logging.info(f"  Raw accuracies: {accuracy_scores[hotkey]}")
-                            #logging.info(f"  Average rank: {avg_ranks[hotkey]:.2f}")
-                        except:
-                            pass
-
-                logging.info(f"Normalized scores: {self.scores}")
-
-                if self.bittensor_network.should_set_weights():
-                    self.bittensor_network.set_weights(self.scores)
-                    logging.info("Weights Setting attempted !")
+            current_time = time.time()
+            self.bittensor_network.set_weights(self.scores)
+            logging.info("Final weights set successfully!")
 
     def check_registration(self):
         try:
