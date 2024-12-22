@@ -147,20 +147,24 @@ class BaseValidator(ABC):
         pass
 
     def evaluate_individual(self, individual, datasets):
-        set_seed(self.seed)
-        accuracies = []
-        for dataset in datasets:
-            for architecture in self.config.Validator.architectures[dataset.name]:
-                model = self.create_model(individual, dataset.name, architecture)
-                model[0].to(self.config.device)
-                accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
-                accuracies.append(accuracy)
-                del model
-        accs = torch.tensor(accuracies, device=self.config.device)
-        avg_acc = accs.mean()
-        normalized_std = 1 - (accs.std()/avg_acc)
-        final_acc = 0.7 * avg_acc + 0.3 * normalized_std
-        return final_acc
+        try:
+            set_seed(self.seed)
+            accuracies = []
+            for dataset in datasets:
+                for architecture in self.config.Validator.architectures[dataset.name]:
+                    model = self.create_model(individual, dataset.name, architecture)
+                    model[0].to(self.config.device)
+                    accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
+                    accuracies.append(accuracy)
+                    del model
+            accs = torch.tensor(accuracies, device=self.config.device)
+            avg_acc = accs.mean()
+            normalized_std = 1 - (accs.std()/avg_acc)
+            final_acc = 0.7 * avg_acc + 0.3 * normalized_std
+            return final_acc
+        except Exception as e:
+            logging.info(f"Evaluation failed. Returning zero")
+            return torch.tensor(0.0)
 
     def compute_ranks(self, filtered_scores_dict):
         """
@@ -442,8 +446,13 @@ class BaseValidator(ABC):
                             )
                         else:
                             # Evaluate original/unique submissions
-                            accuracy_score = self.evaluate_individual(gene, datasets)
-                            accuracy_scores[hotkey_address] = accuracy_score
+                            try:
+                                accuracy_score = self.evaluate_individual(gene, datasets)
+                                accuracy_scores[hotkey_address] = accuracy_score
+                            except:
+                                accuracy_scores[hotkey_address] = torch.tensor(
+                                    existing_record["performance"], device=self.device
+                                )
 
                     # Update gene record
                     self.gene_record_manager.add_record(
@@ -706,53 +715,56 @@ class LossValidator(BaseValidator):
             return torch.tensor(float("inf"), device=outputs.device)
 
     def train(self, model_and_loss, train_loader):
-        set_seed(self.seed)
-        model, loss_function = model_and_loss
-        optimizer = torch.optim.Adam(model.parameters())
-        model.train()
-        for idx, (inputs, targets) in enumerate(train_loader):
-            inputs = inputs.to(self.device)
-            targets = targets.to(self.device)
-            if idx == self.config.Validator.training_iterations:
-                break
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            targets_one_hot = torch.nn.functional.one_hot(
-                targets, num_classes=outputs.shape[-1]
-            ).float()
-            loss = self.safe_evaluate(loss_function, outputs, targets_one_hot)
+        try:
+            set_seed(self.seed)
+            model, loss_function = model_and_loss
+            optimizer = torch.optim.Adam(model.parameters())
+            model.train()
+            for idx, (inputs, targets) in enumerate(train_loader):
+                inputs = inputs.to(self.device)
+                targets = targets.to(self.device)
+                if idx == self.config.Validator.training_iterations:
+                    break
+                optimizer.zero_grad()
+                outputs = model(inputs)
+                targets_one_hot = torch.nn.functional.one_hot(
+                    targets, num_classes=outputs.shape[-1]
+                ).float()
+                loss = self.safe_evaluate(loss_function, outputs, targets_one_hot)
 
-            loss.backward()
-            optimizer.step()
+                loss.backward()
+                optimizer.step()
+        except Exception as e:
+            logging.error(f"TRAINING FAILED. REPORTED ERROR: {e}")
 
     def evaluate(self, model_and_loss, val_loader=None):
-        # try:
-        set_seed(self.seed)
-        train_dataloader, val_dataloader = val_loader
-        model, loss_function = model_and_loss
-        model.train()
-        self.train((model, loss_function), train_loader=train_dataloader)
-        model.eval()
-        correct = 0
-        total = 0
-        with torch.no_grad():
-            for idx, (inputs, targets) in enumerate(val_dataloader):
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
-                if idx > self.config.Validator.validation_iterations:
-                    break
-                outputs = model(inputs)
-                if len(outputs.shape) == 3:
-                    _, predicted = outputs.max(dim=-1)
-                    total += targets.numel()  # Count all elements
-                    correct += predicted.eq(targets).sum().item()
-                else:
-                    _, predicted = outputs.max(1)
-                    total += targets.size(0)
-                    correct += predicted.eq(targets).sum().item()
-        return correct / total
-        # except Exception as e:
-        #     logging.error(f"EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
-        #     return 0.0
+        try:
+            set_seed(self.seed)
+            train_dataloader, val_dataloader = val_loader
+            model, loss_function = model_and_loss
+            model.train()
+            self.train((model, loss_function), train_loader=train_dataloader)
+            model.eval()
+            correct = 0
+            total = 0
+            with torch.no_grad():
+                for idx, (inputs, targets) in enumerate(val_dataloader):
+                    inputs, targets = inputs.to(self.device), targets.to(self.device)
+                    if idx > self.config.Validator.validation_iterations:
+                        break
+                    outputs = model(inputs)
+                    if len(outputs.shape) == 3:
+                        _, predicted = outputs.max(dim=-1)
+                        total += targets.numel()  # Count all elements
+                        correct += predicted.eq(targets).sum().item()
+                    else:
+                        _, predicted = outputs.max(1)
+                        total += targets.size(0)
+                        correct += predicted.eq(targets).sum().item()
+            return correct / total
+        except Exception as e:
+            logging.error(f"EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
+            return 0.0
 
     def create_baseline_model(self):
         return (
