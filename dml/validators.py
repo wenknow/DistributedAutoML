@@ -161,9 +161,12 @@ class BaseValidator(ABC):
                     logging.info(f"Evaluating {dataset.name} on {architecture} result {accuracy}")
                     accuracies.append(accuracy)
                     del model
+            
             accs = torch.tensor(accuracies, device=self.config.device)
             avg_acc = accs.mean()
+            logging.info(f"Averaged accuracies {avg_acc}")
             normalized_std = 1 - (accs.std()/avg_acc)
+            logging.info(f"STD accuracies {normalized_std}")
             final_acc = 0.7 * avg_acc + 0.3 * normalized_std
             return final_acc
         except Exception as e:
