@@ -168,6 +168,7 @@ class BaseValidator(ABC):
             normalized_std = 1 - (accs.std()/avg_acc)
             logging.info(f"STD accuracies {normalized_std}")
             final_acc = 0.7 * avg_acc + 0.3 * normalized_std
+            logging.info(f"Generalization weighted score {final_acc}")
             return final_acc
         except Exception as e:
             logging.info(f"Evaluation failed. Returning zero")
