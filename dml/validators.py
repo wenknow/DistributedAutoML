@@ -52,6 +52,8 @@ class BaseValidator(ABC):
         self.max_retries = 3
         self.retry_delay = 2
 
+        self.validation_round_count = 0
+
         set_seed(self.seed)
 
         # Initialize DEAP
@@ -251,8 +253,7 @@ class BaseValidator(ABC):
         return final_scores
 
     def validate_and_score(self):
-        self.bittensor_network.set_weights(None)
-        self.scores = {}
+
         accuracy_scores = {}
         set_seed(self.seed)
 
@@ -267,45 +268,23 @@ class BaseValidator(ABC):
             logging.info("This validator is no longer registered on the chain.")
             return
 
-        evaluations_count = 1#New method#len([model for models in self.config.Validator.architectures.values() for model in models])
         # Cache chain metadata at start of validation round
         self.cache_chain_metadata()
 
         # Track function signatures for this round
-        round_signatures = {}  # {func_signature: (block_number, hotkey)}
+        round_signatures = {}  # {func_signature: (block_number, hotkey)} #TO
         downloaded_genes = {}  # {hotkey: (gene, compiled_func, func_signature)}
         datasets = load_datasets(self.config.Validator.architectures.keys(), batch_size=32)
 
         temp_scores = {h: 0.0 for h in self.bittensor_network.metagraph.hotkeys}
         validated_miners = set()
 
-        all_hotkeys = self.bittensor_network.metagraph.hotkeys
         # Single pass: download, collect signatures, and evaluate
         for hotkey_address in self.bittensor_network.metagraph.hotkeys:
             logging.info(f"Checking hotkey {hotkey_address}")
             current_time = time.time()
             
-            # Check if we need to set weights due to timeout
-            if current_time - last_weight_set >= WEIGHT_SET_TIMEOUT:
-                logging.warning("30-minute threshold reached. Setting intermediate weights.")
-                
-                # Set intermediate weights using top-k approach
-                if validated_miners:
-                    filtered_temp_scores = {k: v for k, v in temp_scores.items() 
-                                         if k in validated_miners}
-                    
-                    intermediate_scores = self.calculate_topk_scores(
-                        filtered_temp_scores, 
-                        filtered_temp_scores.keys()
-                    )
-
-                    #if self.bittensor_network.should_set_weights():
-                    self.bittensor_network.set_weights(intermediate_scores)
-                    logging.info("Intermediate weights set successfully!")
-                
-                last_weight_set = current_time
-
-            chain_meta = self.chain_metadata_cache.get(hotkey_address)
+            chain_meta = self.chain_metadata_cache.get(hotkey_address) #username/repo_name:HASHOF(repo+sin(y)-cos(x))
             if not chain_meta:
                 accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                 continue
@@ -321,6 +300,7 @@ class BaseValidator(ABC):
             if should_download:
                 gene = self.receive_gene_from_hf(chain_meta["repo"])
                 if gene is None:
+                    logging.info(f"Failed to download gene for {hotkey_address}. Score set to 0")
                     accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                     continue
 
@@ -429,6 +409,18 @@ class BaseValidator(ABC):
                                 logging.info(
                                     f"Existing record by {existing_hotkey} copying from {hotkey_address}. Fixing."
                                 )
+
+                                logging.info(f"{hotkey_address} using cached score")
+                                accuracy_scores[hotkey_address] = torch.tensor(
+                                    existing_record["performance"], device=self.device
+                                )
+
+                                if hotkey_address not in validated_miners:
+                                    validated_miners.add(hotkey_address)
+                                    # Update temporary scores based on current validation results
+                                    if hotkey_address in accuracy_scores:
+                                        temp_scores[hotkey_address] = float(accuracy_scores[hotkey_address])
+
                             else:
                                 accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                                 logging.info(
@@ -440,6 +432,19 @@ class BaseValidator(ABC):
                                 existing_record["block_number"],
                                 hotkey_address,
                             )
+
+                            # Keep cached score
+                            logging.info(f"{hotkey_address} using cached score")
+                            accuracy_scores[hotkey_address] = torch.tensor(
+                                existing_record["performance"], device=self.device
+                            )
+                            
+                            if hotkey_address not in validated_miners:
+                                validated_miners.add(hotkey_address)
+                                # Update temporary scores based on current validation results
+                                if hotkey_address in accuracy_scores:
+                                    temp_scores[hotkey_address] = float(accuracy_scores[hotkey_address])
+
                 else:
                     logging.info(
                         f"{hotkey_address} is a cached failed gene. Assigning zero"
@@ -447,17 +452,6 @@ class BaseValidator(ABC):
                     accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                 
 
-                # Keep cached score
-                logging.info(f"{hotkey_address} using cached score")
-                accuracy_scores[hotkey_address] = torch.tensor(
-                    existing_record["performance"], device=self.device
-                )
-            
-            if hotkey_address not in validated_miners:
-                validated_miners.add(hotkey_address)
-                # Update temporary scores based on current validation results
-                if hotkey_address in accuracy_scores:
-                    temp_scores[hotkey_address] = float(accuracy_scores[hotkey_address])
 
         # Process all genes and check for duplicates
         for hotkey_address in self.bittensor_network.metagraph.hotkeys:
@@ -467,27 +461,28 @@ class BaseValidator(ABC):
                 chain_meta = self.chain_metadata_cache[hotkey_address]
                 downloaded_data = downloaded_genes.get(hotkey_address)
                 
-                current_time = time.time()
-                
-                if current_time - last_weight_set >= WEIGHT_SET_TIMEOUT:
-                    logging.warning("30-minute threshold reached. Setting intermediate weights.")
+                if self.validation_round_count < self.config.Validator.caching_rounds:
+                    current_time = time.time()
                     
-                    # Set intermediate weights using top-k approach
-                    if validated_miners:
-                        filtered_temp_scores = {k: v for k, v in temp_scores.items() 
-                                            if k in validated_miners}
+                    if current_time - last_weight_set >= WEIGHT_SET_TIMEOUT:
+                        logging.warning("30-minute threshold reached. Setting intermediate weights.")
                         
-                        intermediate_scores = self.calculate_topk_scores(
-                            filtered_temp_scores, 
-                            filtered_temp_scores.keys()
-                        )
-                        logging.info(f"Filtered temp scores: {filtered_temp_scores}")
-                        #if self.bittensor_network.should_set_weights():
-                        self.bittensor_network.set_weights(intermediate_scores)
-                        logging.info("Intermediate weights set successfully!")
+                        # Set intermediate weights using top-k approach
+                        if validated_miners:
+                            filtered_temp_scores = {k: v for k, v in temp_scores.items() 
+                                                if k in validated_miners}
+                            
+                            intermediate_scores = self.calculate_topk_scores(
+                                filtered_temp_scores, 
+                                filtered_temp_scores.keys()
+                            )
+                            logging.info(f"Filtered temp scores: {filtered_temp_scores}")
+                            #if self.bittensor_network.should_set_weights():
+                            self.bittensor_network.set_weights(intermediate_scores)
+                            logging.info("Intermediate weights set successfully!")
+                        
+                        last_weight_set = current_time
                     
-                    last_weight_set = current_time
-                
                 logging.info(f"Evaluating Hotkey {hotkey_address}")
                 
                 if downloaded_data:
@@ -502,7 +497,7 @@ class BaseValidator(ABC):
                         if (
                             chain_meta["block_number"] > earliest_block
                             and hotkey_address != original_hotkey
-                        ):
+                        ): #redundant but harmless.
                             logging.warning(
                                 f"Duplicate function from {hotkey_address}. Original at block {earliest_block} by {original_hotkey}"
                             )
@@ -510,11 +505,13 @@ class BaseValidator(ABC):
                         else:
                             # Evaluate original/unique submissions
                             try:
+                                logging.info(f"No issues for {hotkey_address}. Evaluating on dataset+arch combos.")
                                 accuracy_score = self.evaluate_individual(gene, datasets)
                                 accuracy_scores[hotkey_address] = accuracy_score
-                            except:
+                            except Exception as e:
+                                logging.info(f"Evaluation failed for {hotkey_address}. Assigning 0 score. Miner Caused Error: {e}")
                                 accuracy_scores[hotkey_address] = torch.tensor(
-                                    existing_record["performance"], device=self.device
+                                    0.0, device=self.device
                                 )
 
                     # Update gene record
@@ -528,6 +525,12 @@ class BaseValidator(ABC):
                         func=compiled_func,
                         gene_string=func_str,
                     )
+                else:
+                    logging.info(f"Failed to get downloaded gene data for {hotkey_address}. Assigning 0 Score.")
+                    accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
+
+                
+
             
             if hotkey_address not in validated_miners:
                 validated_miners.add(hotkey_address)
@@ -537,17 +540,17 @@ class BaseValidator(ABC):
 
 
         # Score computation and weight setting
-
         if accuracy_scores:
             #if len(accuracy_scores) > 0:
-            float_scores = {k: v for k, v in filtered_scores_dict.items()}
+            float_scores = {k: v for k, v in accuracy_scores.items()}
                 
             # Calculate final scores using top-k approach
-            self.scores = self.calculate_topk_scores(float_scores, all_hotkeys)
+            self.scores = self.calculate_topk_scores(float_scores, self.bittensor_network.metagraph.hotkeys)
 
             current_time = time.time()
             self.bittensor_network.set_weights(self.scores)
             logging.info("Final weights set successfully!")
+
 
     def check_registration(self):
         try:
@@ -629,6 +632,7 @@ class BaseValidator(ABC):
     def start_periodic_validation(self):
         while True:
             self.validate_and_score()
+            self.validation_round_count += 1
             logging.info(f"One round done, sleeping for: {self.interval}")
             time.sleep(self.interval)
 
