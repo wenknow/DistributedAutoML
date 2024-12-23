@@ -153,10 +153,12 @@ class BaseValidator(ABC):
             set_seed(self.seed)
             accuracies = []
             for dataset in datasets:
+                
                 for architecture in self.config.Validator.architectures[dataset.name]:
                     model = self.create_model(individual, dataset.name, architecture)
                     model[0].to(self.config.device)
                     accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
+                    logging.info(f"Evaluating {dataset.name} on {architecture} result {accuracy}")
                     accuracies.append(accuracy)
                     del model
             accs = torch.tensor(accuracies, device=self.config.device)
