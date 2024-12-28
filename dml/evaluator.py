@@ -105,13 +105,14 @@ class LossEvaluator:
         targets_one_hot = torch.nn.functional.one_hot(targets, num_classes=num_classes).float()
         try:
             loss = self.safe_evaluate(loss_function, outputs, targets_one_hot)
+            loss.backward()
+            optimizer.step()
+            
+            metrics['train_loss'].append(loss.item())
         except:
             pass
             #breakpoint()
-        loss.backward()
-        optimizer.step()
         
-        metrics['train_loss'].append(loss.item())
         return metrics
 
     def _validation_step(
