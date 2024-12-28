@@ -345,7 +345,7 @@ class TaskEvaluator:
             metrics = self.evaluator.train_and_evaluate(
                 model, loss_function, train_loader, val_loader, num_classes=50257, metric_type="loss"
             )
-        elif dataset == "cifar100":
+        elif (dataset == "cifar100") or (dataset == "fgvc_aircraft"):
             metrics = self.evaluator.train_and_evaluate(
                 model, loss_function, train_loader, val_loader, num_classes=100, metric_type="accuracy"
             )            
@@ -411,7 +411,7 @@ class TaskEvaluator:
                 metrics = self.evaluator.train_and_evaluate(
                     model, loss_function, train_loader, val_loader, num_classes=50257, metric_type="loss"
                 )
-            elif dataset == "cifar100":
+            elif (dataset == "cifar100") or (dataset == "fgvc_aircraft"):
                 metrics = self.evaluator.train_and_evaluate(
                     model, loss_function, train_loader, val_loader, num_classes=100, metric_type="accuracy"
                 )
