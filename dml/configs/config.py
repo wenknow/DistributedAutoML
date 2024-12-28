@@ -1,12 +1,17 @@
 from dml.configs.general_config import GeneralConfig
+
 from dml.configs.bittensor_config import BittensorConfig
+from dml.configs.evaluator_config import EvaluatorConfig
 from dml.configs.miner_config import MinerConfig
 from dml.configs.validator_config import ValidatorConfig
 
 class Config:
     def __init__(self):
+        
         self.general = GeneralConfig()
+        
         self.Bittensor = BittensorConfig()
+        self.Evaluator = EvaluatorConfig()
         self.Miner = MinerConfig()
         self.Validator = ValidatorConfig()
 

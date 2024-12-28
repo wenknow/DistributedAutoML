@@ -60,11 +60,11 @@ class LossEvaluator:
         batch_counter = 0
         
         model.train()
-        for epoch in range(self.config.epochs):
+        for epoch in range(self.config.Evaluator.epochs):
             with tqdm(total=len(train_loader), desc=f"Epoch {epoch+1}") as pbar:
                 for inputs, targets in train_loader:
                     batch_counter += 1
-                    if batch_counter > self.config.max_batches:
+                    if batch_counter > self.config.Evaluator.max_batches:
                         break
                     
                     metrics = self._training_step(
@@ -72,7 +72,7 @@ class LossEvaluator:
                         inputs, targets, metrics, batch_counter, num_classes
                     )
                     
-                    if batch_counter % self.config.validate_every == 0:
+                    if batch_counter % self.config.Evaluator.validate_every == 0:
                         metrics = self._validation_step(
                             model, val_loader, metrics, batch_counter, metric_type
                         )
@@ -134,7 +134,7 @@ class LossEvaluator:
                 val_targets = val_targets.to(self.config.device)
                 val_outputs = model(val_inputs)
                 if len(val_outputs.shape) == 3:
-                    if idx > self.config.llm_validation_steps: #max validation config
+                    if idx > self.config.Evaluator.llm_validation_steps: #max validation config
                         break
                     _, predicted = val_outputs.max(dim=-1)
                     total += val_targets.numel()  # Count all elements
@@ -289,9 +289,9 @@ class TaskEvaluator:
 
     def evaluate_loss_functions(self, json_folder: str) -> None:
         """Evaluate multiple loss functions from JSON files."""
-        for dataset in self.config.architectures.keys():
+        for dataset in self.config.Evaluator.architectures.keys():
             train_loader, val_loader = load_datasets(dataset)
-            for architecture in self.config.architectures[dataset]:
+            for architecture in self.config.Evaluator.architectures[dataset]:
 
                 self.results_handler = ResultsHandler()  
 
@@ -357,7 +357,7 @@ class TaskEvaluator:
             metrics=metrics,
             function_str=str(individual),
             total_batches=len(train_loader),
-            epochs=self.config.Validator.epochs
+            epochs=self.config.Evaluator.epochs
         )
         # except Exception as e:
         #     print(e)
@@ -423,7 +423,7 @@ class TaskEvaluator:
                 name=f"{loss_name} (Baseline)",
                 metrics=metrics,
                 total_batches=len(train_loader),
-                epochs=self.config.epochs
+                epochs=self.config.Evaluator.epochs
             )
             # except:
             #     continue
