@@ -30,6 +30,10 @@ class Config:
     @property
     def metrics_file(self):
         return self.general.metrics_file
+    
+    @property
+    def seed(self):
+        return self.general.seed
 
     def get_bittensor_config(self):
         return self.Bittensor.get_bittensor_config()
