@@ -290,7 +290,9 @@ class TaskEvaluator:
     def evaluate_loss_functions(self, json_folder: str) -> None:
         """Evaluate multiple loss functions from JSON files."""
         for dataset in self.config.Evaluator.architectures.keys():
-            train_loader, val_loader = load_datasets(dataset)
+            dataset_spec = load_datasets(dataset)[0]
+            train_loader = dataset_spec.train_loader
+            val_loader = dataset_spec.val_loader
             for architecture in self.config.Evaluator.architectures[dataset]:
 
                 self.results_handler = ResultsHandler()  
