@@ -60,13 +60,13 @@ class BaseMiner(ABC, PushMixin):
         # Push tracking
         self.last_push_attempt = 0  # Timestamp of last push attempt
         self.push_cooldown = 30 * 60  # 30 minutes in seconds
-        self.last_push_success = False
+        self.last_push_success = True
         self.best_solution = {
             "individual": None,
             "fitness": float("-inf"),
             "pushed": False,
             "push_attempts": 0,
-            "max_push_attempts": 3,  # Maximum number of push attempts
+            "max_push_attempts": 100,  # Maximum number of push attempts
             "hash": None,
         }
 
@@ -165,8 +165,9 @@ class BaseMiner(ABC, PushMixin):
         current_fitness = individual.fitness.values[0]
         current_hash = self.get_hash(individual)
 
-        if (current_fitness > self.best_solution["fitness"]) \
-            and (current_hash != self.best_solution["hash"]):
+        if ((current_fitness > self.best_solution["fitness"]) \
+            and (current_hash != self.best_solution["hash"])):
+            self.last_push_success = False
             self.best_solution["individual"] = deepcopy(individual)
             self.best_solution["fitness"] = current_fitness
             self.best_solution["pushed"] = False
@@ -176,6 +177,7 @@ class BaseMiner(ABC, PushMixin):
                 f"New best solution found at generation {generation} with fitness {current_fitness:.4f}"
             )
             return True
+
         return False
 
     def initialize_deap(self):
@@ -388,7 +390,9 @@ class BaseMiner(ABC, PushMixin):
             best_updated = self.update_best_solution(best_in_gen, generation)
 
             # Check if we should attempt a push
-            if (best_updated or not self.last_push_success) and self.should_attempt_push():
+            logging.info(f"Best updated:{best_updated}")
+            logging.info(f"Should Attempt:{self.should_attempt_push()}")
+            if self.should_attempt_push():
                 self.attempt_push(self.best_solution["individual"], generation)
 
             # Select the next generation individuals
