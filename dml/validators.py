@@ -749,6 +749,68 @@ class LossValidator(BaseValidator):
             # logging.error(traceback.format_exc())
             return torch.tensor(float("inf"), device=outputs.device)
 
+    def evaluate_partial(self, model_and_loss, val_loader, iter_limit):
+        """Evaluates model with a specific training iteration limit.
+        
+        Args:
+            model_and_loss: Tuple of (model, loss_function)
+            val_loader: Tuple of (train_loader, val_loader)
+            iter_limit: Maximum number of training iterations
+        """
+        try:
+            set_seed(self.seed)
+            train_dataloader, val_dataloader = val_loader
+            model, loss_function = model_and_loss
+            
+            # Training phase with iteration limit
+            model.train()
+            optimizer = torch.optim.Adam(model.parameters())
+            
+            for idx, (inputs, targets) in enumerate(train_dataloader):
+                if idx >= iter_limit:
+                    break
+                    
+                inputs = inputs.to(self.device)
+                targets = targets.to(self.device)
+                
+                optimizer.zero_grad()
+                outputs = model(inputs)
+                targets_one_hot = torch.nn.functional.one_hot(
+                    targets, num_classes=outputs.shape[-1]
+                ).float()
+                loss = self.safe_evaluate(loss_function, outputs, targets_one_hot)
+                loss.backward()
+                optimizer.step()
+
+            # Evaluation phase
+            model.eval()
+            correct = 0
+            total = 0
+            
+            with torch.no_grad():
+                for idx, (inputs, targets) in enumerate(val_dataloader):
+                    if idx > self.config.Validator.validation_iterations:
+                        break
+                        
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                    outputs = model(inputs)
+                    
+                    if len(outputs.shape) == 3:
+                        _, predicted = outputs.max(dim=-1)
+                        total += targets.numel()
+                        correct += predicted.eq(targets).sum().item()
+                    else:
+                        _, predicted = outputs.max(1)
+                        total += targets.size(0)
+                        correct += predicted.eq(targets).sum().item()
+                        
+            return correct / total
+            
+        except Exception as e:
+            logging.error(f"PARTIAL EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
+            return 0.0
+
     def train(self, model_and_loss, train_loader):
         try:
             set_seed(self.seed)
@@ -773,34 +835,25 @@ class LossValidator(BaseValidator):
             logging.error(f"TRAINING FAILED. REPORTED ERROR: {e}")
 
     def evaluate(self, model_and_loss, val_loader=None):
-        try:
-            set_seed(self.seed)
-            train_dataloader, val_dataloader = val_loader
-            model, loss_function = model_and_loss
-            model.train()
-            self.train((model, loss_function), train_loader=train_dataloader)
-            model.eval()
-            correct = 0
-            total = 0
-            with torch.no_grad():
-                for idx, (inputs, targets) in enumerate(val_dataloader):
-                    inputs, targets = inputs.to(self.device), targets.to(self.device)
-                    if idx > self.config.Validator.validation_iterations:
-                        break
-                    outputs = model(inputs)
-                    if len(outputs.shape) == 3:
-                        _, predicted = outputs.max(dim=-1)
-                        total += targets.numel()  # Count all elements
-                        correct += predicted.eq(targets).sum().item()
-                    else:
-                        _, predicted = outputs.max(1)
-                        total += targets.size(0)
-                        correct += predicted.eq(targets).sum().item()
-            logging.info(f"Evaluation score: {correct / total}")
-            return correct / total
-        except Exception as e:
-            logging.error(f"EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
-            return 0.0
+        checkpoints = [0.25, 0.5, 0.75, 1.0]  # Fraction of total training
+        accuracies = []
+        total_iters = self.config.Validator.training_iterations
+        
+        for checkpoint in checkpoints:
+            iter_limit = int(total_iters * checkpoint)
+            acc = self.evaluate_partial(model_and_loss, val_loader, iter_limit)
+            accuracies.append(acc)
+        
+        # Check if accuracies are monotonically increasing (with small tolerance)
+        is_increasing = all(accuracies[i] <= accuracies[i+1] + 0.02 for i in range(len(accuracies)-1))
+        
+        if not is_increasing:
+            # Penalize non-learning architectures
+            return accuracies[-1] * 0.5  # Significant penalty for unstable learning
+        
+        # Reward both final performance and stable growth
+        stability_score = sum(b-a for a, b in zip(accuracies[:-1], accuracies[1:]))
+        return accuracies[-1] * 0.7 + stability_score * 0.3
 
     def create_baseline_model(self):
         return (
