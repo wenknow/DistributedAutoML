@@ -27,6 +27,7 @@ from dml.ops import create_pset_validator
 from dml.record import GeneRecordManager
 from dml.utils import compute_chain_hash, set_seed
 
+from tqdm import tqdm
 
 class BaseValidator(ABC):
     def __init__(self, config):
@@ -86,7 +87,7 @@ class BaseValidator(ABC):
         """Cache chain metadata for all registered miners at start of validation round."""
         self.chain_metadata_cache.clear()
 
-        for hotkey in self.bittensor_network.metagraph.hotkeys:
+        for hotkey in tqdm(self.bittensor_network.metagraph.hotkeys):
 
             try:
                 metadata = self.chain_manager.retrieve_solution_metadata(hotkey)
@@ -163,13 +164,16 @@ class BaseValidator(ABC):
                     del model
             
             accs = torch.tensor(accuracies, device=self.config.device)
-            avg_acc = accs.mean()
-            logging.info(f"Averaged accuracies {avg_acc}")
-            normalized_std = 1 - (accs.std()/avg_acc)
-            logging.info(f"STD accuracies {normalized_std}")
-            final_acc = 0.7 * avg_acc + 0.3 * normalized_std
-            logging.info(f"Generalization weighted score {final_acc}")
-            return final_acc
+            if len(accuracies) > 1:
+                avg_acc = accs.mean()
+                logging.info(f"Averaged accuracies {avg_acc}")
+                normalized_std = 1 - (accs.std()/avg_acc)
+                logging.info(f"STD accuracies {normalized_std}")
+                final_acc = 0.7 * avg_acc + 0.3 * normalized_std
+                logging.info(f"Generalization weighted score {final_acc}")
+                return final_acc
+            else:
+                return torch.tensor(accuracy)
         except Exception as e:
             logging.info(f"Evaluation failed. Returning zero")
             return torch.tensor(0.0)
@@ -270,9 +274,9 @@ class BaseValidator(ABC):
         logging.info("Receiving genes from chain")
         self.bittensor_network.sync(lite=True)
 
-        if not self.check_registration():
-            logging.info("This validator is no longer registered on the chain.")
-            return
+        # if not self.check_registration():
+        #     logging.info("This validator is no longer registered on the chain.")
+        #     return
 
         # Cache chain metadata at start of validation round
         self.cache_chain_metadata()
@@ -286,7 +290,7 @@ class BaseValidator(ABC):
         validated_miners = set()
 
         # Single pass: download, collect signatures, and evaluate
-        for hotkey_address in self.bittensor_network.metagraph.hotkeys:
+        for hotkey_address in tqdm(self.bittensor_network.metagraph.hotkeys):
             logging.info(f"Checking hotkey {hotkey_address}")
             current_time = time.time()
             
@@ -298,7 +302,7 @@ class BaseValidator(ABC):
             should_download = False
             existing_record = self.gene_record_manager.get_record(hotkey_address)
             if existing_record:
-                if existing_record["chain_hash"] != chain_meta["hash"]:
+                if existing_record["chain_hash"] != chain_meta["hash"]: #TODO add unit test
                     should_download = True
             else:
                 should_download = True
@@ -460,7 +464,7 @@ class BaseValidator(ABC):
 
 
         # Process all genes and check for duplicates
-        for hotkey_address in self.bittensor_network.metagraph.hotkeys:
+        for hotkey_address in tqdm(self.bittensor_network.metagraph.hotkeys):
             if (
                 hotkey_address not in accuracy_scores
             ):  # Skip if already processed (cached or failed)
@@ -547,6 +551,7 @@ class BaseValidator(ABC):
 
         # Score computation and weight setting
         if accuracy_scores:
+            breakpoint()
             #if len(accuracy_scores) > 0:
             float_scores = {k: v for k, v in accuracy_scores.items()}
                 
@@ -791,6 +796,7 @@ class LossValidator(BaseValidator):
                         _, predicted = outputs.max(1)
                         total += targets.size(0)
                         correct += predicted.eq(targets).sum().item()
+            logging.info(f"Evaluation score: {correct / total}")
             return correct / total
         except Exception as e:
             logging.error(f"EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
