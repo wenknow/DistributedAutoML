@@ -272,7 +272,7 @@ class BaseValidator(ABC):
             # Sort unique scores in descending order
             sorted_scores = sorted(score_to_hotkeys.keys(), reverse=True)
             
-            top_k_weights = self.config.Validator.top_k_weights
+            top_k_weights = self.config.Validator.top_k_weight
             remaining_weight = 1.0  # Total weight to distribute
             weight_idx = 0  # Current position in top_k_weights
             
