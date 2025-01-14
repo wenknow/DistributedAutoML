@@ -551,7 +551,6 @@ class BaseValidator(ABC):
 
         # Score computation and weight setting
         if accuracy_scores:
-            breakpoint()
             #if len(accuracy_scores) > 0:
             float_scores = {k: v for k, v in accuracy_scores.items()}
                 
