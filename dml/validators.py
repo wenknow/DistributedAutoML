@@ -246,14 +246,16 @@ class BaseValidator(ABC):
 
     def calculate_topk_scores(self, score_dict: Dict[str, float], all_hotkeys: list) -> Dict[str, float]:
         """
-        Calculate normalized top-k scores for miners.
+        Calculate normalized top-k scores for miners with dynamic weight redistribution.
+        When there are ties, remaining weights are pooled and distributed equally among
+        all miners with the same score.
         
         Args:
             score_dict (Dict[str, float]): Dictionary of scores for each miner
-            all_hotkeys (list): List of all hotkeys to include in final dict (ensures consistent shape)
+            all_hotkeys (list): List of all hotkeys to include in final dict
             
         Returns:
-            Dict[str, float]: Normalized scores dictionary with top-k weights applied
+            Dict[str, float]: Normalized scores dictionary with equal weights for tied scores
         """
         # Filter out zero scores
         filtered_scores = {k: v for k, v in score_dict.items() if v != 0.0}
@@ -262,23 +264,46 @@ class BaseValidator(ABC):
         final_scores = {h: 0.0 for h in all_hotkeys}
         
         if filtered_scores:
-            # Sort hotkeys by scores
-            sorted_hotkeys = sorted(filtered_scores.keys(),
-                                  key=lambda h: filtered_scores[h],
-                                  reverse=True)
+            # Group hotkeys by their scores
+            score_to_hotkeys = {}
+            for hotkey, score in filtered_scores.items():
+                score_to_hotkeys.setdefault(score, []).append(hotkey)
             
-            # Assign top-k weights
-            top_k = self.config.Validator.top_k
-            top_k_weights = self.config.Validator.top_k_weight
+            # Sort unique scores in descending order
+            sorted_scores = sorted(score_to_hotkeys.keys(), reverse=True)
             
-            for i, hotkey in enumerate(sorted_hotkeys[:top_k]):
-                if i < len(top_k_weights):
-                    final_scores[hotkey] = top_k_weights[i]
+            top_k_weights = self.config.Validator.top_k_weights
+            remaining_weight = 1.0  # Total weight to distribute
+            weight_idx = 0  # Current position in top_k_weights
             
-            # Normalize scores
-            total_weight = sum(final_scores.values())
-            if total_weight > 0:
-                final_scores = {k: v / total_weight for k, v in final_scores.items()}
+            # Process each score group in descending order
+            for score in sorted_scores:
+                tied_hotkeys = score_to_hotkeys[score]
+                num_hotkeys = len(tied_hotkeys)
+                
+                # If we have any weights left to distribute
+                if remaining_weight > 0:
+                    # Calculate total weight available for this tier
+                    available_weights = top_k_weights[weight_idx:]
+                    weight_for_tier = min(
+                        remaining_weight,  # Don't exceed remaining weight
+                        sum(available_weights)  # Sum of all remaining weights
+                    )
+                    
+                    # Distribute weight equally among all tied hotkeys
+                    weight_per_hotkey = weight_for_tier / num_hotkeys
+                    
+                    # Assign weights
+                    for hotkey in tied_hotkeys:
+                        final_scores[hotkey] = weight_per_hotkey
+                    
+                    # Update remaining weight and weight index
+                    remaining_weight -= weight_for_tier
+                    weight_idx += len(available_weights)  # Move past used weights
+                
+                # If no weight remains, all subsequent miners get 0
+                if remaining_weight <= 0:
+                    break
         
         return final_scores
 
