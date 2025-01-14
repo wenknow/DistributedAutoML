@@ -149,31 +149,51 @@ class BaseValidator(ABC):
     def evaluate(self, model, val_loader):
         pass
 
+
+
     def evaluate_individual(self, individual, datasets):
         try:
             set_seed(self.seed)
-            accuracies = []
+            all_accuracies = []  # List of accuracy progression lists
+            
             for dataset in datasets:
-                
                 for architecture in self.config.Validator.architectures[dataset.name]:
                     model = self.create_model(individual, dataset.name, architecture)
                     model[0].to(self.config.device)
-                    accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
-                    logging.info(f"Evaluating {dataset.name} on {architecture} result {accuracy}")
-                    accuracies.append(accuracy)
+                    accuracies = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
+                    logging.info(f"Evaluating {dataset.name} on {architecture} progression {accuracies}")
+                    all_accuracies.append(accuracies)
                     del model
             
-            accs = torch.tensor(accuracies, device=self.config.device)
-            if len(accuracies) > 1:
-                avg_acc = accs.mean()
-                logging.info(f"Averaged accuracies {avg_acc}")
-                normalized_std = 1 - (accs.std()/avg_acc)
+            # Convert to tensor for easier analysis
+            accs = torch.tensor(all_accuracies, device=self.config.device)  # Shape: [n_models, n_checkpoints]
+            
+            if len(all_accuracies) > 1:
+                # Learning progression check
+                final_accs = accs[:, -1]  # Last checkpoint across all models
+                avg_acc = final_accs.mean()
+                logging.info(f"Averaged final accuracies {avg_acc}")
+                
+                # Cross-dataset/architecture consistency (from original)
+                normalized_std = 1 - (final_accs.std()/avg_acc)
                 logging.info(f"STD accuracies {normalized_std}")
-                final_acc = 0.7 * avg_acc + 0.3 * normalized_std
-                logging.info(f"Generalization weighted score {final_acc}")
+                
+                # Learning stability: check if each model improves over time
+                is_learning = torch.all(accs[:, 1:] >= accs[:, :-1] - 0.02, dim=1)  # Per model
+                learning_ratio = is_learning.float().mean()  # Fraction of models that learn well
+                logging.info(f"Learning stability ratio {learning_ratio}")
+                
+                # Combined score
+                final_acc = (
+                    0.5 * avg_acc +           # Final performance
+                    0.3 * normalized_std +    # Cross-dataset consistency
+                    0.2 * learning_ratio      # Learning stability
+                )
+                logging.info(f"Final weighted score {final_acc}")
                 return final_acc
             else:
-                return torch.tensor(accuracy)
+                return accs[0, -1]  # Just return final accuracy for single model
+                
         except Exception as e:
             logging.info(f"Evaluation failed. Returning zero")
             return torch.tensor(0.0)
@@ -748,30 +768,28 @@ class LossValidator(BaseValidator):
             # logging.error(traceback.format_exc())
             return torch.tensor(float("inf"), device=outputs.device)
 
-    def evaluate_partial(self, model_and_loss, val_loader, iter_limit):
-        """Evaluates model with a specific training iteration limit.
-        
-        Args:
-            model_and_loss: Tuple of (model, loss_function)
-            val_loader: Tuple of (train_loader, val_loader)
-            iter_limit: Maximum number of training iterations
-        """
+    def evaluate(self, model_and_loss, val_loader=None):
         try:
             set_seed(self.seed)
             train_dataloader, val_dataloader = val_loader
             model, loss_function = model_and_loss
-            
-            # Training phase with iteration limit
             model.train()
             optimizer = torch.optim.Adam(model.parameters())
             
+            # Track accuracies at checkpoints 
+            checkpoints = [
+                int(self.config.Validator.training_iterations * x) 
+                for x in [0.25, 0.5, 0.75, 1.0]
+            ]
+            accuracies = []
+            
+            # Training loop with periodic evaluation
             for idx, (inputs, targets) in enumerate(train_dataloader):
-                if idx >= iter_limit:
+                if idx == self.config.Validator.training_iterations:
                     break
                     
                 inputs = inputs.to(self.device)
                 targets = targets.to(self.device)
-                
                 optimizer.zero_grad()
                 outputs = model(inputs)
                 targets_one_hot = torch.nn.functional.one_hot(
@@ -780,35 +798,40 @@ class LossValidator(BaseValidator):
                 loss = self.safe_evaluate(loss_function, outputs, targets_one_hot)
                 loss.backward()
                 optimizer.step()
-
-            # Evaluation phase
-            model.eval()
-            correct = 0
-            total = 0
-            
-            with torch.no_grad():
-                for idx, (inputs, targets) in enumerate(val_dataloader):
-                    if idx > self.config.Validator.validation_iterations:
-                        break
-                        
-                    inputs = inputs.to(self.device)
-                    targets = targets.to(self.device)
-                    outputs = model(inputs)
+                
+                # If we hit a checkpoint, evaluate
+                if idx in checkpoints:
+                    model.eval()
+                    acc = self.evaluate_validation_set(model, val_dataloader)
+                    accuracies.append(acc)
+                    model.train()
                     
-                    if len(outputs.shape) == 3:
-                        _, predicted = outputs.max(dim=-1)
-                        total += targets.numel()
-                        correct += predicted.eq(targets).sum().item()
-                    else:
-                        _, predicted = outputs.max(1)
-                        total += targets.size(0)
-                        correct += predicted.eq(targets).sum().item()
-                        
-            return correct / total
-            
+            return accuracies
+                    
         except Exception as e:
-            logging.error(f"PARTIAL EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
-            return 0.0
+            logging.error(f"EVALUATION FAILED. Setting ZERO scores. REPORTED ERROR: {e}")
+            return [0.0] * len(checkpoints)
+
+    def evaluate_validation_set(self, model, val_dataloader):
+        """Helper to evaluate on validation set"""
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for idx, (inputs, targets) in enumerate(val_dataloader):
+                if idx > self.config.Validator.validation_iterations:
+                    break
+                inputs = inputs.to(self.device)
+                targets = targets.to(self.device)
+                outputs = model(inputs)
+                if len(outputs.shape) == 3:
+                    _, predicted = outputs.max(dim=-1)
+                    total += targets.numel()
+                    correct += predicted.eq(targets).sum().item()
+                else:
+                    _, predicted = outputs.max(1)
+                    total += targets.size(0)
+                    correct += predicted.eq(targets).sum().item()
+        return correct / total
 
     def train(self, model_and_loss, train_loader):
         try:
@@ -833,26 +856,6 @@ class LossValidator(BaseValidator):
         except Exception as e:
             logging.error(f"TRAINING FAILED. REPORTED ERROR: {e}")
 
-    def evaluate(self, model_and_loss, val_loader=None):
-        checkpoints = [0.25, 0.5, 0.75, 1.0]  # Fraction of total training
-        accuracies = []
-        total_iters = self.config.Validator.training_iterations
-        
-        for checkpoint in checkpoints:
-            iter_limit = int(total_iters * checkpoint)
-            acc = self.evaluate_partial(model_and_loss, val_loader, iter_limit)
-            accuracies.append(acc)
-        
-        # Check if accuracies are monotonically increasing (with small tolerance)
-        is_increasing = all(accuracies[i] <= accuracies[i+1] + 0.02 for i in range(len(accuracies)-1))
-        
-        if not is_increasing:
-            # Penalize non-learning architectures
-            return accuracies[-1] * 0.5  # Significant penalty for unstable learning
-        
-        # Reward both final performance and stable growth
-        stability_score = sum(b-a for a, b in zip(accuracies[:-1], accuracies[1:]))
-        return accuracies[-1] * 0.7 + stability_score * 0.3
 
     def create_baseline_model(self):
         return (
