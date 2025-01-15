@@ -27,14 +27,14 @@ class ValidatorConfig:
     }
     
     # Training settings
-    training_iterations = 600
+    training_iterations = 1000
     # {
     #     "mnist": 100,
     #     "cifar10": 200,
     #     "cifar100": 300
     # }
     
-    validation_iterations = 100
+    validation_iterations = 300
     # {
     #     "mnist": 10,
     #     "cifar10": 20,

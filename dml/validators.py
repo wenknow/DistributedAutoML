@@ -27,6 +27,7 @@ from dml.ops import create_pset_validator
 from dml.record import GeneRecordManager
 from dml.utils import compute_chain_hash, set_seed
 
+from tqdm import tqdm
 
 class BaseValidator(ABC):
     def __init__(self, config):
@@ -86,7 +87,7 @@ class BaseValidator(ABC):
         """Cache chain metadata for all registered miners at start of validation round."""
         self.chain_metadata_cache.clear()
 
-        for hotkey in self.bittensor_network.metagraph.hotkeys:
+        for hotkey in tqdm(self.bittensor_network.metagraph.hotkeys):
 
             try:
                 metadata = self.chain_manager.retrieve_solution_metadata(hotkey)
@@ -148,28 +149,51 @@ class BaseValidator(ABC):
     def evaluate(self, model, val_loader):
         pass
 
+
+
     def evaluate_individual(self, individual, datasets):
         try:
             set_seed(self.seed)
-            accuracies = []
+            all_accuracies = []  # List of accuracy progression lists
+            
             for dataset in datasets:
-                
                 for architecture in self.config.Validator.architectures[dataset.name]:
                     model = self.create_model(individual, dataset.name, architecture)
                     model[0].to(self.config.device)
-                    accuracy = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
-                    logging.info(f"Evaluating {dataset.name} on {architecture} result {accuracy}")
-                    accuracies.append(accuracy)
+                    accuracies = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
+                    logging.info(f"Evaluating {dataset.name} on {architecture} progression {accuracies}")
+                    all_accuracies.append(accuracies)
                     del model
             
-            accs = torch.tensor(accuracies, device=self.config.device)
-            avg_acc = accs.mean()
-            logging.info(f"Averaged accuracies {avg_acc}")
-            normalized_std = 1 - (accs.std()/avg_acc)
-            logging.info(f"STD accuracies {normalized_std}")
-            final_acc = 0.7 * avg_acc + 0.3 * normalized_std
-            logging.info(f"Generalization weighted score {final_acc}")
-            return final_acc
+            # Convert to tensor for easier analysis
+            accs = torch.tensor(all_accuracies, device=self.config.device)  # Shape: [n_models, n_checkpoints]
+            
+            if len(all_accuracies) > 1:
+                # Learning progression check
+                final_accs = accs[:, -1]  # Last checkpoint across all models
+                avg_acc = final_accs.mean()
+                logging.info(f"Averaged final accuracies {avg_acc}")
+                
+                # Cross-dataset/architecture consistency (from original)
+                normalized_std = 1 - (final_accs.std()/avg_acc)
+                logging.info(f"STD accuracies {normalized_std}")
+                
+                # Learning stability: check if each model improves over time
+                is_learning = torch.all(accs[:, 1:] >= accs[:, :-1] - 0.02, dim=1)  # Per model
+                learning_ratio = is_learning.float().mean()  # Fraction of models that learn well
+                logging.info(f"Learning stability ratio {learning_ratio}")
+                
+                # Combined score
+                final_acc = (
+                    0.5 * avg_acc +           # Final performance
+                    0.3 * normalized_std +    # Cross-dataset consistency
+                    0.2 * learning_ratio      # Learning stability
+                )
+                logging.info(f"Final weighted score {final_acc}")
+                return final_acc
+            else:
+                return accs[0, -1]  # Just return final accuracy for single model
+                
         except Exception as e:
             logging.info(f"Evaluation failed. Returning zero")
             return torch.tensor(0.0)
@@ -222,14 +246,9 @@ class BaseValidator(ABC):
 
     def calculate_topk_scores(self, score_dict: Dict[str, float], all_hotkeys: list) -> Dict[str, float]:
         """
-        Calculate normalized top-k scores for miners.
-        
-        Args:
-            score_dict (Dict[str, float]): Dictionary of scores for each miner
-            all_hotkeys (list): List of all hotkeys to include in final dict (ensures consistent shape)
-            
-        Returns:
-            Dict[str, float]: Normalized scores dictionary with top-k weights applied
+        Calculate normalized top-k scores for miners with dynamic weight redistribution.
+        When there are ties, remaining weights are pooled and distributed equally among
+        all miners with the same score.
         """
         # Filter out zero scores
         filtered_scores = {k: v for k, v in score_dict.items() if v != 0.0}
@@ -238,25 +257,47 @@ class BaseValidator(ABC):
         final_scores = {h: 0.0 for h in all_hotkeys}
         
         if filtered_scores:
-            # Sort hotkeys by scores
-            sorted_hotkeys = sorted(filtered_scores.keys(),
-                                  key=lambda h: filtered_scores[h],
-                                  reverse=True)
-            
-            # Assign top-k weights
-            top_k = self.config.Validator.top_k
+            # Group hotkeys by their scores
+            score_to_hotkeys = {}
+            for hotkey, score in filtered_scores.items():
+                score = score.item()
+                score_to_hotkeys.setdefault(score, []).append(hotkey)
+                
+            # Sort unique scores in descending order
+            sorted_scores = sorted(score_to_hotkeys.keys(), reverse=True)
             top_k_weights = self.config.Validator.top_k_weight
+            remaining_weight = 1.0
+            weight_idx = 0
             
-            for i, hotkey in enumerate(sorted_hotkeys[:top_k]):
-                if i < len(top_k_weights):
-                    final_scores[hotkey] = top_k_weights[i]
-            
-            # Normalize scores
-            total_weight = sum(final_scores.values())
-            if total_weight > 0:
-                final_scores = {k: v / total_weight for k, v in final_scores.items()}
-        
-        return final_scores
+            # Process each score group in descending order
+            for score in sorted_scores:
+                tied_hotkeys = score_to_hotkeys[score]
+                num_hotkeys = len(tied_hotkeys)
+                
+                # If we have any weights left to distribute
+                if remaining_weight > 0 and weight_idx < len(top_k_weights):
+                    # Calculate total weight available for this tier
+                    weights_needed = min(num_hotkeys, len(top_k_weights) - weight_idx)
+                    available_weights = top_k_weights[weight_idx:weight_idx + weights_needed]
+                    weight_for_tier = sum(available_weights)
+                    
+                    # Distribute weight equally among all tied hotkeys
+                    weight_per_hotkey = weight_for_tier / num_hotkeys
+                    
+                    # Assign weights
+                    for hotkey in tied_hotkeys:
+                        final_scores[hotkey] = weight_per_hotkey
+                    
+                    # Update remaining weight and weight index
+                    remaining_weight -= weight_for_tier
+                    weight_idx += weights_needed  # Only advance by number of weights used
+                
+                # If no weight remains or we've used all weights, stop
+                if remaining_weight <= 0 or weight_idx >= len(top_k_weights):
+                    break
+                    
+            return final_scores
+
 
     def validate_and_score(self):
 
@@ -270,9 +311,9 @@ class BaseValidator(ABC):
         logging.info("Receiving genes from chain")
         self.bittensor_network.sync(lite=True)
 
-        if not self.check_registration():
-            logging.info("This validator is no longer registered on the chain.")
-            return
+        # if not self.check_registration():
+        #     logging.info("This validator is no longer registered on the chain.")
+        #     return
 
         # Cache chain metadata at start of validation round
         self.cache_chain_metadata()
@@ -286,7 +327,7 @@ class BaseValidator(ABC):
         validated_miners = set()
 
         # Single pass: download, collect signatures, and evaluate
-        for hotkey_address in self.bittensor_network.metagraph.hotkeys:
+        for hotkey_address in tqdm(self.bittensor_network.metagraph.hotkeys):
             logging.info(f"Checking hotkey {hotkey_address}")
             current_time = time.time()
             
@@ -298,7 +339,7 @@ class BaseValidator(ABC):
             should_download = False
             existing_record = self.gene_record_manager.get_record(hotkey_address)
             if existing_record:
-                if existing_record["chain_hash"] != chain_meta["hash"]:
+                if existing_record["chain_hash"] != chain_meta["hash"]: #TODO add unit test
                     should_download = True
             else:
                 should_download = True
@@ -460,7 +501,7 @@ class BaseValidator(ABC):
 
 
         # Process all genes and check for duplicates
-        for hotkey_address in self.bittensor_network.metagraph.hotkeys:
+        for hotkey_address in tqdm(self.bittensor_network.metagraph.hotkeys):
             if (
                 hotkey_address not in accuracy_scores
             ):  # Skip if already processed (cached or failed)
@@ -744,6 +785,71 @@ class LossValidator(BaseValidator):
             # logging.error(traceback.format_exc())
             return torch.tensor(float("inf"), device=outputs.device)
 
+    def evaluate(self, model_and_loss, val_loader=None):
+        try:
+            set_seed(self.seed)
+            train_dataloader, val_dataloader = val_loader
+            model, loss_function = model_and_loss
+            model.train()
+            optimizer = torch.optim.Adam(model.parameters())
+            
+            # Track accuracies at checkpoints 
+            checkpoints = [
+                int(self.config.Validator.training_iterations * x) 
+                for x in [0.25, 0.5, 0.75, 1.0]
+            ]
+            accuracies = []
+            
+            # Training loop with periodic evaluation
+            for idx, (inputs, targets) in enumerate(train_dataloader):
+                if idx == self.config.Validator.training_iterations:
+                    break
+                    
+                inputs = inputs.to(self.device)
+                targets = targets.to(self.device)
+                optimizer.zero_grad()
+                outputs = model(inputs)
+                targets_one_hot = torch.nn.functional.one_hot(
+                    targets, num_classes=outputs.shape[-1]
+                ).float()
+                loss = self.safe_evaluate(loss_function, outputs, targets_one_hot)
+                loss.backward()
+                optimizer.step()
+                
+                # If we hit a checkpoint, evaluate
+                if idx in checkpoints:
+                    model.eval()
+                    acc = self.evaluate_validation_set(model, val_dataloader)
+                    accuracies.append(acc)
+                    model.train()
+                    
+            return accuracies
+                    
+        except Exception as e:
+            logging.error(f"EVALUATION FAILED. Setting ZERO scores. REPORTED ERROR: {e}")
+            return [0.0] * len(checkpoints)
+
+    def evaluate_validation_set(self, model, val_dataloader):
+        """Helper to evaluate on validation set"""
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for idx, (inputs, targets) in enumerate(val_dataloader):
+                if idx > self.config.Validator.validation_iterations:
+                    break
+                inputs = inputs.to(self.device)
+                targets = targets.to(self.device)
+                outputs = model(inputs)
+                if len(outputs.shape) == 3:
+                    _, predicted = outputs.max(dim=-1)
+                    total += targets.numel()
+                    correct += predicted.eq(targets).sum().item()
+                else:
+                    _, predicted = outputs.max(1)
+                    total += targets.size(0)
+                    correct += predicted.eq(targets).sum().item()
+        return correct / total
+
     def train(self, model_and_loss, train_loader):
         try:
             set_seed(self.seed)
@@ -767,34 +873,6 @@ class LossValidator(BaseValidator):
         except Exception as e:
             logging.error(f"TRAINING FAILED. REPORTED ERROR: {e}")
 
-    def evaluate(self, model_and_loss, val_loader=None):
-        try:
-            set_seed(self.seed)
-            train_dataloader, val_dataloader = val_loader
-            model, loss_function = model_and_loss
-            model.train()
-            self.train((model, loss_function), train_loader=train_dataloader)
-            model.eval()
-            correct = 0
-            total = 0
-            with torch.no_grad():
-                for idx, (inputs, targets) in enumerate(val_dataloader):
-                    inputs, targets = inputs.to(self.device), targets.to(self.device)
-                    if idx > self.config.Validator.validation_iterations:
-                        break
-                    outputs = model(inputs)
-                    if len(outputs.shape) == 3:
-                        _, predicted = outputs.max(dim=-1)
-                        total += targets.numel()  # Count all elements
-                        correct += predicted.eq(targets).sum().item()
-                    else:
-                        _, predicted = outputs.max(1)
-                        total += targets.size(0)
-                        correct += predicted.eq(targets).sum().item()
-            return correct / total
-        except Exception as e:
-            logging.error(f"EVALUATION FAILED. Setting ZERO score. REPORTED ERROR: {e}")
-            return 0.0
 
     def create_baseline_model(self):
         return (
