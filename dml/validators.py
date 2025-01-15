@@ -249,13 +249,6 @@ class BaseValidator(ABC):
         Calculate normalized top-k scores for miners with dynamic weight redistribution.
         When there are ties, remaining weights are pooled and distributed equally among
         all miners with the same score.
-        
-        Args:
-            score_dict (Dict[str, float]): Dictionary of scores for each miner
-            all_hotkeys (list): List of all hotkeys to include in final dict
-            
-        Returns:
-            Dict[str, float]: Normalized scores dictionary with equal weights for tied scores
         """
         # Filter out zero scores
         filtered_scores = {k: v for k, v in score_dict.items() if v != 0.0}
@@ -267,14 +260,14 @@ class BaseValidator(ABC):
             # Group hotkeys by their scores
             score_to_hotkeys = {}
             for hotkey, score in filtered_scores.items():
+                score = score.item()
                 score_to_hotkeys.setdefault(score, []).append(hotkey)
-            
+                
             # Sort unique scores in descending order
             sorted_scores = sorted(score_to_hotkeys.keys(), reverse=True)
-            
             top_k_weights = self.config.Validator.top_k_weight
-            remaining_weight = 1.0  # Total weight to distribute
-            weight_idx = 0  # Current position in top_k_weights
+            remaining_weight = 1.0
+            weight_idx = 0
             
             # Process each score group in descending order
             for score in sorted_scores:
@@ -282,13 +275,11 @@ class BaseValidator(ABC):
                 num_hotkeys = len(tied_hotkeys)
                 
                 # If we have any weights left to distribute
-                if remaining_weight > 0:
+                if remaining_weight > 0 and weight_idx < len(top_k_weights):
                     # Calculate total weight available for this tier
-                    available_weights = top_k_weights[weight_idx:]
-                    weight_for_tier = min(
-                        remaining_weight,  # Don't exceed remaining weight
-                        sum(available_weights)  # Sum of all remaining weights
-                    )
+                    weights_needed = min(num_hotkeys, len(top_k_weights) - weight_idx)
+                    available_weights = top_k_weights[weight_idx:weight_idx + weights_needed]
+                    weight_for_tier = sum(available_weights)
                     
                     # Distribute weight equally among all tied hotkeys
                     weight_per_hotkey = weight_for_tier / num_hotkeys
@@ -299,13 +290,14 @@ class BaseValidator(ABC):
                     
                     # Update remaining weight and weight index
                     remaining_weight -= weight_for_tier
-                    weight_idx += len(available_weights)  # Move past used weights
+                    weight_idx += weights_needed  # Only advance by number of weights used
                 
-                # If no weight remains, all subsequent miners get 0
-                if remaining_weight <= 0:
+                # If no weight remains or we've used all weights, stop
+                if remaining_weight <= 0 or weight_idx >= len(top_k_weights):
                     break
-        
-        return final_scores
+                    
+            return final_scores
+
 
     def validate_and_score(self):
 
