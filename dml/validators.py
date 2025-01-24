@@ -260,7 +260,8 @@ class BaseValidator(ABC):
             # Group hotkeys by their scores
             score_to_hotkeys = {}
             for hotkey, score in filtered_scores.items():
-                score = score.item()
+                if type(score) != float:
+                    score = score.item()
                 score_to_hotkeys.setdefault(score, []).append(hotkey)
                 
             # Sort unique scores in descending order
