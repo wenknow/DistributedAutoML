@@ -85,8 +85,8 @@ class BaseValidator(ABC):
 
     def cache_chain_metadata(self):
         """Cache chain metadata aligned with block modulo boundaries"""
-        current_block = self.subtensor.get_current_block()
-        cache_interval = 7200
+        current_block = self.bittensor_network.subtensor.get_current_block()
+        cache_interval = self.config.Validator.cache_interval
         
         # Calculate the last modulo boundary
         last_modulo_block = (current_block // cache_interval) * cache_interval
