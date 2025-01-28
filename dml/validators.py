@@ -84,24 +84,40 @@ class BaseValidator(ABC):
         )
 
     def cache_chain_metadata(self):
-        """Cache chain metadata for all registered miners at start of validation round."""
-        self.chain_metadata_cache.clear()
-
-        for hotkey in tqdm(self.bittensor_network.metagraph.hotkeys):
-
-            try:
-                metadata = self.chain_manager.retrieve_solution_metadata(hotkey)
-                if metadata:
-                    self.chain_metadata_cache[hotkey] = {
-                        "repo": metadata.id.repo_name,
-                        "hash": metadata.id.solution_hash,
-                        "block_number": metadata.block,
-                    }
-            except Exception as e:
-                logging.error(f"Failed to cache chain metadata: {str(e)}")
-        logging.info(
-            f"Cached chain metadata for {len(self.chain_metadata_cache)} miners"
-        )
+        """Cache chain metadata aligned with block modulo boundaries"""
+        current_block = self.subtensor.get_current_block()
+        cache_interval = 7200
+        
+        # Calculate the last modulo boundary
+        last_modulo_block = (current_block // cache_interval) * cache_interval
+        
+        # Check if we've cached since the last modulo boundary
+        if not hasattr(self, 'last_cache_block'):
+            should_cache = True
+        else:
+            # We should cache if our last cache was before the most recent modulo boundary
+            should_cache = self.last_cache_block < last_modulo_block
+        
+        if should_cache:
+            logging.info(f"Caching at block {current_block}. Last modulo boundary was {last_modulo_block}")
+            self.chain_metadata_cache.clear()
+            
+            for hotkey in tqdm(self.bittensor_network.metagraph.hotkeys):
+                try:
+                    metadata = self.chain_manager.retrieve_solution_metadata(hotkey)
+                    if metadata:
+                        self.chain_metadata_cache[hotkey] = {
+                            "repo": metadata.id.repo_name,
+                            "hash": metadata.id.solution_hash,
+                            "block_number": metadata.block,
+                        }
+                except Exception as e:
+                    logging.error(f"Failed to cache metadata for {hotkey}: {str(e)}")
+            
+            self.last_cache_block = current_block
+            logging.info(f"Cache updated. Next cache will be after block {last_modulo_block + cache_interval}")
+        else:
+            logging.info(f"No cache update needed. Current block: {current_block}, Last cache: {self.last_cache_block}")
 
     def check_chain_submission(
         self, func, hotkey: str
