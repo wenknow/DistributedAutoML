@@ -14,6 +14,7 @@ class ValidatorConfig:
     cache_interval = 7200
     caching_rounds = 2
     
+    cache_interval = 7200
 
     validation_interval = 2000
     validator_type = "loss"
