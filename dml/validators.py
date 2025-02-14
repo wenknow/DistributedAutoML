@@ -40,6 +40,7 @@ class BaseValidator(ABC):
     def __init__(self, config):
 
         self.config = config
+        self.bt_config = config.get_bittensor_config()
         self.device = config.device
         self.chain_manager = config.chain_manager
         self.bittensor_network = config.bittensor_network
