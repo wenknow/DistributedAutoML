@@ -144,7 +144,7 @@ class BaseValidator(ABC):
                     }
                     
             except Exception as e:
-                self.logger.error(f"Metadata caching failed for {id_}: {str(e)}")
+                logging.error(f"Metadata caching failed for {id_}: {str(e)}")
 
         cache_size = len(self.chain_metadata_cache)
         logging.info(f"Cache updated with {cache_size} entries at block {current_block}")
