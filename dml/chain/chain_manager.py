@@ -13,6 +13,7 @@ import multiprocessing
 from typing import Optional, Any
 import logging
 
+from bittensor.core.chain_data import decode_account_id
 
 def _wrapped_func(func: functools.partial, queue: multiprocessing.Queue):
     try:
@@ -55,6 +56,14 @@ def run_in_subprocess(func: functools.partial, ttl: int, mode="fork") -> Any:
         raise Exception(f"BaseException raised in subprocess: {str(result)}")
 
     return result
+
+def decode_metadata(encoded_ss58: tuple, metadata: dict) -> tuple[str, str]:
+    decoded_key = decode_account_id(encoded_ss58[0])
+    block = metadata['block']
+    commitment = metadata["info"]["fields"][0][0]
+    bytes_tuple = commitment[next(iter(commitment.keys()))][0]
+    return decoded_key, bytes(bytes_tuple).decode(), block
+
 
 
 SHA256_BASE_64_LENGTH = 44  # Length of base64 encoded SHA256 hash

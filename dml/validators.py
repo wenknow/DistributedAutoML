@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 import time
 import math
 
+from bittensor.core.subtensor import Subtensor
+
 import torchvision.models as models
 from requests.exceptions import Timeout
 
@@ -18,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from deap import algorithms, base, creator, tools, gp
 
+from dml.chain.chain_manager import decode_metadata, SolutionMetadata
 from dml.configs.validator_config import constrained_decay
 from dml.hf_timeout import TimeoutHfApi
 from dml.data import load_datasets
@@ -27,7 +30,11 @@ from dml.ops import create_pset_validator
 from dml.record import GeneRecordManager
 from dml.utils import compute_chain_hash, set_seed
 
+
+
 from tqdm import tqdm
+
+
 
 class BaseValidator(ABC):
     def __init__(self, config):
@@ -111,34 +118,37 @@ class BaseValidator(ABC):
         )
 
     def cache_chain_metadata(self):
-        """
-        Cache chain metadata with improved logging and error handling
-        """
-        logging.info("CACHING")
-        try:
-            current_block = self.bittensor_network.subtensor.get_current_block()
-            logging.info(f"Starting metadata cache at block {current_block}")
-            
-            self.chain_metadata_cache.clear()
-            
-            for hotkey in tqdm(self.bittensor_network.metagraph.hotkeys):
-                try:
-                    metadata = self.chain_manager.retrieve_solution_metadata(hotkey)
-                    if metadata:
-                        self.chain_metadata_cache[hotkey] = {
-                            "repo": metadata.id.repo_name,
-                            "hash": metadata.id.solution_hash,
-                            "block_number": metadata.block,
-                        }
-                except Exception as e:
-                    logging.error(f"Failed to cache metadata for {hotkey}: {str(e)}")
-            
-            cache_size = len(self.chain_metadata_cache)
-            total_keys = len(self.bittensor_network.metagraph.hotkeys)
-            logging.info(f"Cache updated with {cache_size}/{total_keys} entries at block {current_block}")
-            
-        except Exception as e:
-            logging.error(f"Failed to update cache: {str(e)}")
+        """Improved caching with error handling"""
+        self.chain_metadata_cache.clear()
+        current_block = self.bittensor_network.subtensor.get_current_block()
+        logging.info(f"Starting metadata cache at block {current_block}")
+        with Subtensor(self.bt_config.subtensor.network) as subtensor:
+            result = subtensor.substrate.query_map(
+                module="Commitments",
+                storage_function="CommitmentOf",
+                params=[self.bt_config.netuid],
+                block_hash=None,
+            )
+
+        for id_, value in result:
+            try:
+                hotkey, metadata_string, block_number = decode_metadata(id_, value.value)
+                metadata = SolutionMetadata.from_compressed_str(metadata_string, block=block_number)
+                
+                if metadata and metadata.id:
+                    self.chain_metadata_cache[hotkey] = {
+                        "repo": metadata.id.repo_name,
+                        "hash": metadata.id.solution_hash,
+                        "block_number": metadata.block
+                    }
+                    
+            except Exception as e:
+                self.logger.error(f"Metadata caching failed for {id_}: {str(e)}")
+
+        cache_size = len(self.chain_metadata_cache)
+        logging.info(f"Cache updated with {cache_size} entries at block {current_block}")
+
+
 
     def check_chain_submission(
         self, func, hotkey: str
