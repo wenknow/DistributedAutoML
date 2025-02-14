@@ -150,7 +150,6 @@ class BaseValidator(ABC):
             except Exception as e:
                 logging.error(f"Metadata caching failed for {decode_account_id(id_[0])}: {str(e)}")
 
-        breakpoint()
         cache_size = len(self.chain_metadata_cache)
         logging.info(f"Cache updated with {cache_size} entries at block {current_block}")
 
@@ -205,60 +204,60 @@ class BaseValidator(ABC):
 
 
     def evaluate_individual(self, individual, datasets):
-        try:
-            set_seed(self.seed)
-            all_accuracies = []  # List of accuracy progression lists
+        #try:
+        set_seed(self.seed)
+        all_accuracies = []  # List of accuracy progression lists
+        
+        for dataset in datasets:
+            for architecture in self.config.Validator.architectures[dataset.name]:
+                model = self.create_model(individual, dataset.name, architecture)
+                model[0].to(self.config.device)
+                accuracies = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
+                logging.info(f"Evaluating {dataset.name} on {architecture} progression {accuracies}")
+                all_accuracies.append(accuracies)
+                del model
+        
+        # Convert to tensor for easier analysis
+        accs = torch.tensor(all_accuracies, device=self.config.device)  # Shape: [n_models, n_checkpoints]
+        
+        if len(all_accuracies) > 1:
+            # Learning progression check
+            final_accs = accs[:, -1]  # Last checkpoint across all models
+            avg_acc = final_accs.mean()
+            logging.info(f"Averaged final accuracies {avg_acc}")
             
-            for dataset in datasets:
-                for architecture in self.config.Validator.architectures[dataset.name]:
-                    model = self.create_model(individual, dataset.name, architecture)
-                    model[0].to(self.config.device)
-                    accuracies = self.evaluate(model, (dataset.train_loader, dataset.val_loader))
-                    logging.info(f"Evaluating {dataset.name} on {architecture} progression {accuracies}")
-                    all_accuracies.append(accuracies)
-                    del model
+            # Cross-dataset/architecture consistency with division by zero handling
+            eps = 1e-8
+            std = final_accs.std()
+            avg_abs = avg_acc.abs() if avg_acc != 0 else torch.tensor(0.0, device=self.config.device)
+            normalized_std = 1 - (std / (avg_acc + eps)) if avg_abs > eps else torch.tensor(0.0, device=self.config.device)
+            logging.info(f"STD accuracies {normalized_std}")
             
-            # Convert to tensor for easier analysis
-            accs = torch.tensor(all_accuracies, device=self.config.device)  # Shape: [n_models, n_checkpoints]
+            # Learning stability check
+            is_learning = torch.all(accs[:, 1:] >= accs[:, :-1] - 0.02, dim=1)
+            learning_ratio = is_learning.float().mean()
+            logging.info(f"Learning stability ratio {learning_ratio}")
             
-            if len(all_accuracies) > 1:
-                # Learning progression check
-                final_accs = accs[:, -1]  # Last checkpoint across all models
-                avg_acc = final_accs.mean()
-                logging.info(f"Averaged final accuracies {avg_acc}")
-                
-                # Cross-dataset/architecture consistency with division by zero handling
-                eps = 1e-8
-                std = final_accs.std()
-                avg_abs = avg_acc.abs() if avg_acc != 0 else torch.tensor(0.0, device=self.config.device)
-                normalized_std = 1 - (std / (avg_acc + eps)) if avg_abs > eps else torch.tensor(0.0, device=self.config.device)
-                logging.info(f"STD accuracies {normalized_std}")
-                
-                # Learning stability check
-                is_learning = torch.all(accs[:, 1:] >= accs[:, :-1] - 0.02, dim=1)
-                learning_ratio = is_learning.float().mean()
-                logging.info(f"Learning stability ratio {learning_ratio}")
-                
-                # Combined score with NaN check
-                final_acc = (
-                    0.5 * avg_acc +           # Final performance
-                    0.3 * normalized_std +    # Cross-dataset consistency
-                    0.2 * learning_ratio      # Learning stability
-                )
-                # Replace NaN with 0.0 if any component is NaN
-                if torch.isnan(final_acc):
-                    final_acc = torch.tensor(0.0, device=self.config.device)
-                logging.info(f"Final weighted score {final_acc}")
-                return final_acc.item()  # Convert to Python float
-            else:
-                final_acc = accs[0, -1]
-                if torch.isnan(final_acc):
-                    final_acc = torch.tensor(0.0, device=self.config.device)
-                return final_acc.item()  # Convert to Python float
+            # Combined score with NaN check
+            final_acc = (
+                0.5 * avg_acc +           # Final performance
+                0.3 * normalized_std +    # Cross-dataset consistency
+                0.2 * learning_ratio      # Learning stability
+            )
+            # Replace NaN with 0.0 if any component is NaN
+            if torch.isnan(final_acc):
+                final_acc = torch.tensor(0.0, device=self.config.device)
+            logging.info(f"Final weighted score {final_acc}")
+            return final_acc.item()  # Convert to Python float
+        else:
+            final_acc = accs[0, -1]
+            if torch.isnan(final_acc):
+                final_acc = torch.tensor(0.0, device=self.config.device)
+            return final_acc.item()  # Convert to Python float
 
-        except Exception as e:
-            logging.error(f"EVALUATION FAILED. Setting ZERO scores. REPORTED ERROR: {str(e)}")
-            return 0.0
+        # except Exception as e:
+        #     logging.error(f"EVALUATION FAILED. Setting ZERO scores. REPORTED ERROR: {str(e)}")
+        #     return 0.0
 
     def compute_ranks(self, filtered_scores_dict):
         """
@@ -394,6 +393,7 @@ class BaseValidator(ABC):
             
             chain_meta = self.chain_metadata_cache.get(hotkey_address) #username/repo_name:HASHOF(repo+sin(y)-cos(x))
             if not chain_meta:
+                logging.info(f"Failed to find hotkey {hotkey_address} in cached chain data. Setting 0.")
                 accuracy_scores[hotkey_address] = torch.tensor(0.0, device=self.config.device)
                 continue
 
@@ -738,6 +738,7 @@ class BaseValidator(ABC):
                 return ""  # Return empty string if we couldn't get the hash
 
     def start_periodic_validation(self):
+        
         while True:
             current_block = self.bittensor_network.subtensor.get_current_block()
             current_time = time.time()
