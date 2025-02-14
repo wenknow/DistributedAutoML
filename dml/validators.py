@@ -138,8 +138,8 @@ class BaseValidator(ABC):
                 
                 if metadata and metadata.id:
                     self.chain_metadata_cache[hotkey] = {
-                        "repo": metadata.id.repo_name,
-                        "hash": metadata.id.solution_hash,
+                        "repo": metadata.repo_name,
+                        "hash": metadata.solution_hash,
                         "block_number": block_number
                     }
                     
