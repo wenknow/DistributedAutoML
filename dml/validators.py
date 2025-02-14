@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from deap import algorithms, base, creator, tools, gp
 
-from dml.chain.chain_manager import decode_metadata, SolutionMetadata
+from dml.chain.chain_manager import decode_metadata, SolutionId
 from dml.configs.validator_config import constrained_decay
 from dml.hf_timeout import TimeoutHfApi
 from dml.data import load_datasets
@@ -134,13 +134,13 @@ class BaseValidator(ABC):
         for id_, value in result:
             try:
                 hotkey, metadata_string, block_number = decode_metadata(id_, value.value)
-                metadata = SolutionMetadata.from_compressed_str(metadata_string, block=block_number)
+                metadata = SolutionId.from_compressed_str(metadata_string, block=block_number)
                 
                 if metadata and metadata.id:
                     self.chain_metadata_cache[hotkey] = {
                         "repo": metadata.id.repo_name,
                         "hash": metadata.id.solution_hash,
-                        "block_number": metadata.block
+                        "block_number": block_number
                     }
                     
             except Exception as e:
