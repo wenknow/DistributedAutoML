@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 import time
 import math
 
+from bittensor.core.chain_data import decode_account_id
 from bittensor.core.subtensor import Subtensor
 
 import torchvision.models as models
@@ -19,6 +20,7 @@ from requests.exceptions import Timeout
 from typing import Any, Dict, Optional, Tuple
 
 from deap import algorithms, base, creator, tools, gp
+
 
 from dml.chain.chain_manager import decode_metadata, SolutionId
 from dml.configs.validator_config import constrained_decay
@@ -136,16 +138,19 @@ class BaseValidator(ABC):
                 hotkey, metadata_string, block_number = decode_metadata(id_, value.value)
                 metadata = SolutionId.from_compressed_str(metadata_string)
                 
-                if metadata and metadata.id:
+                if metadata:
                     self.chain_metadata_cache[hotkey] = {
                         "repo": metadata.repo_name,
                         "hash": metadata.solution_hash,
                         "block_number": block_number
                     }
-                    
+            
+            except IndexError as e:
+                logging.error(f"Improperly formatted metadata {metadata_string} for {decode_account_id(id_[0])}: {str(e)}")
             except Exception as e:
-                logging.error(f"Metadata caching failed for {id_}: {str(e)}")
+                logging.error(f"Metadata caching failed for {decode_account_id(id_[0])}: {str(e)}")
 
+        breakpoint()
         cache_size = len(self.chain_metadata_cache)
         logging.info(f"Cache updated with {cache_size} entries at block {current_block}")
 
