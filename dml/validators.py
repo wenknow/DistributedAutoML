@@ -68,7 +68,7 @@ class BaseValidator(ABC):
         self.cache_interval = config.Validator.cache_interval
         self.cache_check_interval = 12  # Check every 12 seconds
         self.last_cache_block = 0
-        self.last_check_time = time.time()
+        self.last_check_time = 0.0
 
         set_seed(self.seed)
 
