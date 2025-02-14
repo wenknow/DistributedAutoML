@@ -134,7 +134,7 @@ class BaseValidator(ABC):
         for id_, value in result:
             try:
                 hotkey, metadata_string, block_number = decode_metadata(id_, value.value)
-                metadata = SolutionId.from_compressed_str(metadata_string, block=block_number)
+                metadata = SolutionId.from_compressed_str(metadata_string)
                 
                 if metadata and metadata.id:
                     self.chain_metadata_cache[hotkey] = {
