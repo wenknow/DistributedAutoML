@@ -5,10 +5,10 @@ class MinerConfig:
     device = "cpu"
     batch_size = 8
     checkpoint_save_dir = "checkpoints"
-    check_registration_interval = 500
-    evaluation_iterations = 50
-    gp_tree_height = 90
-    generations = 10000000000 
+    check_registration_interval = 300
+    evaluation_iterations = 65
+    gp_tree_height = 50
+    generations = 1000
     miner_type = "loss"
     num_processes = 1 #TODO add multi-arch multi-core mining support
     pool_url = None #"http://127.0.0.1:5000"
@@ -17,7 +17,7 @@ class MinerConfig:
     save_temp_only = True
     seed = int(time.time())
     tournament_size = 2    
-    training_iterations = 100
+    training_iterations = 200
     architectures = {
         "cifar10": [ "mlp" ],
         "imagenette": [ "resnet", "mobilenet_v3", "efficientnet_v2" ],
