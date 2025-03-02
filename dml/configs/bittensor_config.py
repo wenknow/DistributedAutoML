@@ -5,7 +5,7 @@ class BittensorConfig:
     wallet_name = "1_coldkey"
     wallet_hotkey = "1_hotkey"
     path = "~/.bittensor/wallets/"
-    network = "local"  # or "finney" for mainnet
+    network = "finney"  # or "finney" for mainnet
     epoch_length = 100
     #subtensor_chain_endpoint = bt.__finney_entrypoint__ #"ws://127.0.0.1:9944"  # local subtensor
 
